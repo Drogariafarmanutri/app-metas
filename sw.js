@@ -1,6 +1,6 @@
 // Service worker: guarda a "casca" do app para abrir rápido e funcionar
 // como aplicativo instalado. Os números sempre vêm da internet (nunca do cache).
-const VERSAO = "metas-v3";
+const VERSAO = "metas-v4";
 const CASCA = [
   "./",
   "index.html",
@@ -11,6 +11,8 @@ const CASCA = [
   "icones/icone-192.png",
   "icones/icone-512.png",
   "icones/apple-touch-icon.png",
+  "icones/logo-completa.png",
+  "icones/simbolo-64.png",
 ];
 
 self.addEventListener("install", (e) => {

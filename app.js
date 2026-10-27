@@ -10,7 +10,7 @@ const DOMINIO_EMAIL = "vendedor.farmanutri.app";
 const app = document.getElementById("app");
 
 let sb = null; // cliente Supabase
-const estado = { logado: false, perfil: null, dados: null, ranking: [], equipe: [], atualizadoEm: null, erro: null };
+const estado = { logado: false, perfil: null, dados: null, ranking: [], equipe: [], loja: null, atualizadoEm: null, erro: null, verTodosVencendo: false };
 // Gestor (diretoria/gerência) olhando os números de um vendedor: código dele; null = os próprios
 let VER = null;
 const membro = (codigo) => estado.equipe.find((m) => m.codigo === codigo) || null;
@@ -50,6 +50,8 @@ const I = {
   mes: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>`,
   indicadores: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>`,
   premio: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 12h18M12 8c-2-4-6-4-6-1.5S10 8 12 8zm0 0c2-4 6-4 6-1.5S14 8 12 8z"/></svg>`,
+  vender: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="8" cy="8" r="1.6"/></svg>`,
+  relogioP: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
   equipe: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2A5 5 0 0 1 21.5 19"/></svg>`,
   ranking: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg>`,
 };
@@ -100,6 +102,34 @@ const EXEMPLO = {
       ritmo: { faixa: 90, valor: 1300 },
     },
     ranking: { posicao: 4, total: 6 },
+    vencendo: { faturamento: 860.4, lucro: 412.1, itens: 23, posicao: 3, total: 6 },
+    mix: {
+      vendas_4sku_001: 37, valor_promocao: 6120, qtd_promocao: 402, pct_promocao: 0.129,
+      top_vendido: { codigo: 1, nome: "DIPIRONA MONOIDRATADA 1G 10 COMP", qtd: 182 },
+      top_lucrativo: { codigo: 2, nome: "PROTETOR SOLAR FPS 50 200ML", lucro: 734.5 },
+    },
+  },
+  loja: {
+    vencendo: [
+      { codigo: 11, nome: "VITAMINA C 1G 10 EFERV", qtd: 6, vencimento: "2026-11-05", dias: 9, preco: 12.9 },
+      { codigo: 12, nome: "SHAMPOO ANTICASPA 200ML", qtd: 3, vencimento: "2026-11-18", dias: 22, preco: 19.9 },
+      { codigo: 13, nome: "SORO FISIOLOGICO 500ML", qtd: 12, vencimento: "2026-11-30", dias: 34, preco: 4.5 },
+      { codigo: 14, nome: "ALBENDAZOL 400MG 1 COMP", qtd: 8, vencimento: "2026-12-10", dias: 44, preco: null },
+    ],
+    vencendo_loja: { faturamento: 4310, itens: 141 },
+    promocoes: [
+      { codigo: 21, nome: "FRALDA INFANTIL G 30UN", termino: "2026-10-31" },
+      { codigo: 22, nome: "PROTETOR SOLAR FPS 30 120ML", termino: "2026-11-15" },
+    ],
+    arrasto: [
+      { codigo: 31, nome: "LENCO UMEDECIDO 50UN", vendas: 48 },
+      { codigo: 32, nome: "POMADA PARA ASSADURA 45G", vendas: 31 },
+    ],
+    oportunidades: [{ codigo: 41, nome: "COLAGENO HIDROLISADO 120 CAPS", rank_lucro: 2, qtd: 9 }],
+    sazonais: [
+      { chave: "este_mes", mes: 10, ano: 2025, itens: [{ codigo: 51, nome: "REPELENTE SPRAY 100ML", posicao: 1 }, { codigo: 52, nome: "PARACETAMOL 750MG 20 COMP", posicao: 2 }] },
+      { chave: "proximo_mes", mes: 11, ano: 2025, itens: [{ codigo: 53, nome: "PROTETOR SOLAR FPS 50 200ML", posicao: 1 }] },
+    ],
   },
 };
 
@@ -135,6 +165,7 @@ async function carregarDados() {
       perfil: { ...EXEMPLO.perfil, gestor, nome: gestor ? "Gerente Exemplo" : EXEMPLO.perfil.nome },
       dados: gestor ? null : EXEMPLO.dados,
       ranking: EXEMPLO.ranking,
+      loja: EXEMPLO.loja,
       atualizadoEm: EXEMPLO.atualizadoEm,
       equipe: gestor ? equipeExemplo() : [],
     });
@@ -160,6 +191,8 @@ async function carregarDados() {
   ]);
   if (e2) throw e2;
   if (e3) throw e3;
+  const { data: lj } = await sb.from("loja").select("dados").maybeSingle().then((r) => r, () => ({ data: null }));
+  estado.loja = lj?.dados || null;
   const comMes = (x) => (x ? { ...x.dados, mesano: x.mesano } : null);
   const ind = (inds || []).find((x) => x.codigo === perfil.codigo);
   estado.perfil = perfil;
@@ -181,21 +214,23 @@ async function carregarDados() {
 const ABAS = [
   ["mes", "Meu Mês", I.mes],
   ["indicadores", "Indicadores", I.indicadores],
+  ["vender", "Vender", I.vender],
   ["premio", "Prêmio", I.premio],
   ["ranking", "Ranking", I.ranking],
 ];
+const abasDe = (...ids) => ids.map((id) => ABAS.find((a) => a[0] === id));
 
 function moldura(aba, titulo, subtitulo, corpo) {
   const d = dadosAlvo() || estado.dados || estado.equipe.find((m) => m.dados)?.dados;
   const vendo = VER != null ? membro(VER) : null;
   const abas = vendo
-    ? [["equipe", "Equipe", I.equipe], ...ABAS.slice(0, 3).map(([id, rot, ic]) => [`v/${VER}/${id}`, rot.replace("Meu ", ""), ic, id])]
-    : estado.perfil?.gestor ? [["equipe", "Equipe", I.equipe], ...ABAS] : ABAS;
+    ? [["equipe", "Equipe", I.equipe], ...abasDe("mes", "indicadores", "premio").map(([id, rot, ic]) => [`v/${VER}/${id}`, rot.replace("Meu ", ""), ic, id])]
+    : estado.perfil?.gestor ? [["equipe", "Equipe", I.equipe], ...abasDe("vender", "ranking")] : ABAS;
   return `
     ${DEMO ? `<div class="aviso-demo">Modo demonstração · números de exemplo</div>` : ""}
     <header class="topo">
       <div class="topo-linha">
-        <div class="marca">${I.cruz()}<span>FARMANUTRI</span></div>
+        <div class="marca"><img class="simbolo" src="icones/simbolo-64.png" alt="" width="26" height="26"><span>FARMANUTRI</span></div>
         <div class="topo-linha">
           <span class="topo-mes">${esc(nomeMes(d?.mesano))}</span>
           <button class="sair" data-acao="sair" type="button">Sair</button>
@@ -332,6 +367,7 @@ function telaIndicadores() {
       <section class="cartao"><span class="rotulo">Ticket médio</span><span class="valor-m" style="font-size:22px">${brl(i.ticket_medio, 2)}</span></section>
       <section class="cartao"><span class="rotulo">Itens por venda</span><span class="valor-m" style="font-size:22px">${num(i.itens_por_venda)}</span></section>
     </div>
+    ${blocoMix(d)}
     ${checklist}`);
 }
 
@@ -436,6 +472,70 @@ function telaRanking() {
 }
 
 // ---------------------------------------------------------------------------
+// Mix de vendas (na tela Indicadores)
+// ---------------------------------------------------------------------------
+function blocoMix(d) {
+  const m = d?.mix;
+  if (!m) return "";
+  const prod = (t, extra) => (t ? `<strong>${esc(t.nome)}</strong> <span class="nota">· ${extra}</span>` : "–");
+  return `
+    <section class="cartao" style="gap:10px">
+      <h2>Mix de vendas no mês</h2>
+      <div class="grade-2" style="gap:8px">
+        <div class="mini-cartao"><span class="rotulo">Vendido em promoção</span><span class="valor-p">${brl(m.valor_promocao)}</span><span class="nota">${pct(m.pct_promocao, 1)} das suas vendas</span></div>
+        <div class="mini-cartao"><span class="rotulo">Vendas +4 itens e item R$ 0,01</span><span class="valor-p">${m.vendas_4sku_001 ?? 0}</span></div>
+      </div>
+      <div class="linha-texto"><span class="rotulo">Seu mais vendido</span>${prod(m.top_vendido, `${num(m.top_vendido?.qtd, 0)} un.`)}</div>
+      <div class="linha-texto"><span class="rotulo">Seu mais lucrativo</span>${prod(m.top_lucrativo, "maior lucro no mês")}</div>
+    </section>`;
+}
+
+// ---------------------------------------------------------------------------
+// Tela: Vender (vencendo, promoções, leve junto, oportunidades, sazonais)
+// ---------------------------------------------------------------------------
+const dataCurta = (iso) => (iso ? iso.slice(8, 10) + "/" + iso.slice(5, 7) : "");
+const MESES_ABREV = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
+function telaVender() {
+  const lj = estado.loja;
+  const d = estado.dados;
+  if (!lj) return moldura("vender", "Vender", "", `<section class="cartao"><p style="margin:0;font-weight:600">As listas de produtos aparecem assim que a próxima sincronização terminar.</p></section>`);
+  const v = d?.vencendo;
+  const meu = v ? `
+    <section class="cartao" style="gap:6px">
+      <div class="linha-base"><span class="rotulo">Você vendeu de produtos vencendo</span>${v.posicao ? `<span class="selo">${v.posicao}º de ${v.total}</span>` : ""}</div>
+      <span class="valor-m">${brl(v.faturamento)}</span>
+      <span class="nota" style="font-size:13px">${num(v.itens, 0)} unidades no mês · loja: ${brl(lj.vencendo_loja?.faturamento)}</span>
+    </section>` : "";
+  const lista = lj.vencendo || [];
+  const mostrar = estado.verTodosVencendo ? lista : lista.slice(0, 12);
+  const urg = (dias) => (dias == null ? "" : dias <= 15 ? "urgente" : dias <= 45 ? "atencao" : "");
+  const vencendo = lista.length ? `
+    <section class="cartao lista-prod">
+      <h2>Vencendo · ofereça primeiro <span class="rotulo">(${lista.length})</span></h2>
+      ${mostrar.map((p) => `
+        <div class="prod">
+          <div class="prod-nome">${esc(p.nome)}<span class="nota">${num(p.qtd, 0)} un.${p.preco ? ` · ${brl(p.preco, 2)}` : ""}</span></div>
+          <span class="vence ${urg(p.dias)}">${I.relogioP}${dataCurta(p.vencimento)}${p.dias != null ? `<small>${p.dias} d</small>` : ""}</span>
+        </div>`).join("")}
+      ${lista.length > 12 ? `<button class="link" type="button" data-acao="todos-vencendo">${estado.verTodosVencendo ? "Mostrar menos" : `Ver todos os ${lista.length}`}</button>` : ""}
+    </section>` : "";
+  const simples = (titulo, itens, dir) => (itens?.length ? `
+    <section class="cartao lista-prod">
+      <h2>${titulo}</h2>
+      ${itens.map((p, i) => `<div class="prod"><div class="prod-nome"><span class="num">${i + 1}</span>${esc(p.nome)}</div>${dir ? `<span class="nota">${dir(p)}</span>` : ""}</div>`).join("")}
+    </section>` : "");
+  const saz = (lj.sazonais || []).filter((s) => s.itens?.length);
+  return moldura("vender", "Vender", "O que oferecer hoje", `
+    ${meu}
+    ${vencendo}
+    ${simples(`Em promoção hoje <span class="rotulo">(${(lj.promocoes || []).length})</span>`, lj.promocoes, (p) => (p.termino ? `até ${dataCurta(p.termino)}` : ""))}
+    ${simples("Leve junto · mais vendidos com as promoções", lj.arrasto, (p) => `${p.vendas} vendas`)}
+    ${simples("Alta margem, pouca venda · indique", lj.oportunidades)}
+    ${saz.map((s) => simples(`Mais vendidos em ${MESES_ABREV[s.mes - 1]}/${s.ano}${s.chave === "proximo_mes" ? " · prepare-se" : ""}`, s.itens)).join("")}`);
+}
+
+// ---------------------------------------------------------------------------
 // Tela: Equipe (diretoria/gerência)
 // ---------------------------------------------------------------------------
 function telaEquipe() {
@@ -502,8 +602,7 @@ function telaLogin(erro = "") {
   return `
     <div class="entrada">
       <div class="logo">
-        ${I.cruz(72)}
-        <div class="logo-texto"><small>DROGARIA</small><strong><span style="color:var(--verde)">FARMA</span><span style="color:var(--azul)">NUTRI</span></strong></div>
+        <img class="logo-img" src="icones/logo-completa.png" alt="Drogaria Popular Farmanutri" width="220" height="224">
         <p>Minhas Metas</p>
       </div>
       <form class="cartao" id="form-login" novalidate>
@@ -550,7 +649,7 @@ function telaPrimeiroAcesso(erro = "") {
 // ---------------------------------------------------------------------------
 // Navegação
 // ---------------------------------------------------------------------------
-const TELAS = { mes: telaMes, indicadores: telaIndicadores, premio: telaPremio, ranking: telaRanking, equipe: telaEquipe };
+const TELAS = { mes: telaMes, indicadores: telaIndicadores, vender: telaVender, premio: telaPremio, ranking: telaRanking, equipe: telaEquipe };
 
 function rotaAtual() {
   return (location.hash.replace(/^#\/?/, "") || "").split("?")[0];
@@ -637,6 +736,13 @@ app.addEventListener("submit", async (e) => {
 });
 
 app.addEventListener("click", async (e) => {
+  if (e.target.closest("[data-acao=todos-vencendo]")) {
+    estado.verTodosVencendo = !estado.verTodosVencendo;
+    const y = window.scrollY;
+    render();
+    window.scrollTo(0, y);
+    return;
+  }
   if (e.target.closest("[data-acao=sair]")) {
     if (!DEMO && sb) await sb.auth.signOut();
     Object.assign(estado, { logado: false, perfil: null, dados: null, ranking: [] });
