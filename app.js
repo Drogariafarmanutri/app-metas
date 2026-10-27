@@ -10,7 +10,12 @@ const DOMINIO_EMAIL = "vendedor.farmanutri.app";
 const app = document.getElementById("app");
 
 let sb = null; // cliente Supabase
-const estado = { logado: false, perfil: null, dados: null, ranking: [], atualizadoEm: null, erro: null };
+const estado = { logado: false, perfil: null, dados: null, ranking: [], equipe: [], atualizadoEm: null, erro: null };
+// Gestor (diretoria/gerência) olhando os números de um vendedor: código dele; null = os próprios
+let VER = null;
+const membro = (codigo) => estado.equipe.find((m) => m.codigo === codigo) || null;
+const dadosAlvo = () => (VER != null ? membro(VER)?.dados || null : estado.dados);
+const perfilAlvo = () => (VER != null ? membro(VER) : estado.perfil);
 
 // ---------------------------------------------------------------------------
 // Utilidades
@@ -45,6 +50,7 @@ const I = {
   mes: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>`,
   indicadores: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>`,
   premio: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 12h18M12 8c-2-4-6-4-6-1.5S10 8 12 8zm0 0c2-4 6-4 6-1.5S14 8 12 8z"/></svg>`,
+  equipe: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2A5 5 0 0 1 21.5 19"/></svg>`,
   ranking: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg>`,
 };
 
@@ -124,10 +130,19 @@ function traduzErroCadastro(msg = "") {
 
 async function carregarDados() {
   if (DEMO) {
-    Object.assign(estado, { perfil: EXEMPLO.perfil, dados: EXEMPLO.dados, ranking: EXEMPLO.ranking, atualizadoEm: EXEMPLO.atualizadoEm });
+    const gestor = new URLSearchParams(location.search).has("gestor");
+    Object.assign(estado, {
+      perfil: { ...EXEMPLO.perfil, gestor, nome: gestor ? "Gerente Exemplo" : EXEMPLO.perfil.nome },
+      dados: gestor ? null : EXEMPLO.dados,
+      ranking: EXEMPLO.ranking,
+      atualizadoEm: EXEMPLO.atualizadoEm,
+      equipe: gestor ? equipeExemplo() : [],
+    });
     return;
   }
-  const { data: perfil, error: e1 } = await sb.from("vendedores").select("codigo,nome,ativo,bloqueado").maybeSingle();
+  // "gestor" só existe depois da atualização do banco; sem ela, segue como vendedor
+  let { data: perfil, error: e1 } = await sb.from("vendedores").select("codigo,nome,ativo,bloqueado,gestor").eq("user_id", (await sb.auth.getUser()).data.user?.id).maybeSingle();
+  if (e1) ({ data: perfil, error: e1 } = await sb.from("vendedores").select("codigo,nome,ativo,bloqueado").maybeSingle());
   if (e1) throw e1;
   if (!perfil || !perfil.ativo || perfil.bloqueado) {
     await sb.auth.signOut();
@@ -135,15 +150,27 @@ async function carregarDados() {
     estado.erro = "Seu acesso foi encerrado. Fale com o seu supervisor.";
     return;
   }
-  const [{ data: ind, error: e2 }, { data: rk, error: e3 }, { data: sinc }] = await Promise.all([
-    sb.from("indicadores").select("mesano,dados,atualizado_em").maybeSingle(),
-    sb.from("ranking").select("posicao,codigo,nome,supermeta").order("posicao"),
+  const [{ data: inds, error: e2 }, { data: rk, error: e3 }, { data: sinc }, { data: vend }] = await Promise.all([
+    perfil.gestor
+      ? sb.from("indicadores").select("codigo,mesano,dados,atualizado_em")
+      : sb.from("indicadores").select("codigo,mesano,dados,atualizado_em").eq("codigo", perfil.codigo),
+    sb.from("ranking").select("*").order("posicao"),
     sb.from("sincronizacao").select("atualizado_em").maybeSingle(),
+    perfil.gestor ? sb.from("vendedores").select("codigo,nome,ativo,tem_meta") : Promise.resolve({ data: [] }),
   ]);
   if (e2) throw e2;
   if (e3) throw e3;
+  const comMes = (x) => (x ? { ...x.dados, mesano: x.mesano } : null);
+  const ind = (inds || []).find((x) => x.codigo === perfil.codigo);
   estado.perfil = perfil;
-  estado.dados = ind ? { ...ind.dados, mesano: ind.mesano } : null;
+  estado.dados = comMes(ind);
+  const fotos = Object.fromEntries((rk || []).map((r) => [r.codigo, r.foto]));
+  estado.equipe = perfil.gestor
+    ? (vend || []).filter((v) => v.ativo && v.tem_meta).map((v) => ({
+        codigo: v.codigo, nome: v.nome, foto: fotos[v.codigo] || null,
+        dados: comMes((inds || []).find((x) => x.codigo === v.codigo)),
+      }))
+    : [];
   estado.ranking = rk || [];
   estado.atualizadoEm = sinc?.atualizado_em || ind?.atualizado_em || null;
 }
@@ -159,7 +186,11 @@ const ABAS = [
 ];
 
 function moldura(aba, titulo, subtitulo, corpo) {
-  const d = estado.dados;
+  const d = dadosAlvo() || estado.dados || estado.equipe.find((m) => m.dados)?.dados;
+  const vendo = VER != null ? membro(VER) : null;
+  const abas = vendo
+    ? [["equipe", "Equipe", I.equipe], ...ABAS.slice(0, 3).map(([id, rot, ic]) => [`v/${VER}/${id}`, rot.replace("Meu ", ""), ic, id])]
+    : estado.perfil?.gestor ? [["equipe", "Equipe", I.equipe], ...ABAS] : ABAS;
   return `
     ${DEMO ? `<div class="aviso-demo">Modo demonstração · números de exemplo</div>` : ""}
     <header class="topo">
@@ -173,26 +204,30 @@ function moldura(aba, titulo, subtitulo, corpo) {
       ${subtitulo ? `<p style="margin-top:10px">${subtitulo}</p>` : ""}
       <h1>${titulo}</h1>
     </header>
+    ${vendo ? `<a class="vendo" href="#/equipe">${I.voltar}<span>Vendo <strong>${esc(vendo.nome)}</strong> · voltar para a equipe</span></a>` : ""}
     <main id="conteudo" tabindex="-1">
       ${corpo}
       ${estado.atualizadoEm ? `<p class="nota centro">Atualizado às ${hora(estado.atualizadoEm)} · dados do Automatiza</p>` : ""}
     </main>
-    <nav class="abas" aria-label="Navegação principal"><div class="dentro">
-      ${ABAS.map(([id, rot, ic]) => `<a href="#/${id}" ${id === aba ? 'aria-current="page"' : ""}>${ic}${rot}</a>`).join("")}
+    <nav class="abas" aria-label="Navegação principal"><div class="dentro" style="grid-template-columns:repeat(${abas.length},minmax(0,1fr))">
+      ${abas.map(([id, rot, ic, base]) => `<a href="#/${id}" ${(base || id) === aba && (vendo ? id !== "equipe" : true) ? 'aria-current="page"' : ""}>${ic}${rot}</a>`).join("")}
     </div></nav>`;
 }
 
 function semDados(aba, titulo) {
-  return moldura(aba, titulo, "", `<section class="cartao"><p style="margin:0;font-weight:600">Ainda não há números para você neste mês. Assim que houver vendas e meta cadastradas, eles aparecem aqui.</p></section>`);
+  const msg = estado.perfil?.gestor && VER == null
+    ? "Você não tem meta própria neste mês. Veja os números de todos na aba Equipe."
+    : "Ainda não há números neste mês. Assim que houver vendas e meta cadastradas, eles aparecem aqui.";
+  return moldura(aba, titulo, "", `<section class="cartao"><p style="margin:0;font-weight:600">${msg}</p></section>`);
 }
 
 // ---------------------------------------------------------------------------
 // Tela: Meu Mês
 // ---------------------------------------------------------------------------
 function telaMes() {
-  const d = estado.dados;
+  const d = dadosAlvo();
   if (!d) return semDados("mes", "Meu Mês");
-  const primeiroNome = esc(String(estado.perfil?.nome || "").split(" ")[0]);
+  const primeiroNome = esc(String(perfilAlvo()?.nome || "").split(" ")[0]);
   if (d.sem_meta) {
     return moldura("mes", "Sua meta ainda não foi cadastrada", `Olá, ${primeiroNome}`, `
       <section class="cartao"><span class="rotulo">Vendido no mês</span><span class="valor-g">${brl(d.faturamento)}</span></section>`);
@@ -220,7 +255,7 @@ function telaMes() {
     </section>
     <div class="grade-2">
       <section class="cartao">
-        <span class="rotulo">Sua meta de hoje</span>
+        <span class="rotulo">${VER != null ? "Meta de hoje" : "Sua meta de hoje"}</span>
         <span class="valor-m azul">${brl(metaHoje)}</span>
         <span class="nota">${d.calendario.restantes} ${d.calendario.restantes === 1 ? "dia" : "dias"} de venda restantes</span>
       </section>
@@ -258,7 +293,7 @@ function barraIndicador(rotulo, valorTxt, largura, cor, marca, aria, legenda) {
 }
 
 function telaIndicadores() {
-  const d = estado.dados;
+  const d = dadosAlvo();
   if (!d) return semDados("indicadores", "Meus Indicadores");
   const i = d.indicadores;
   const ident = i.identificacao ?? 0;
@@ -304,7 +339,7 @@ function telaIndicadores() {
 // Tela: Premiação
 // ---------------------------------------------------------------------------
 function telaPremio() {
-  const d = estado.dados;
+  const d = dadosAlvo();
   if (!d || !d.premiacao) return semDados("premio", "Minha Premiação");
   const p = d.premiacao;
   const i = d.indicadores;
@@ -359,6 +394,15 @@ function telaPremio() {
 // ---------------------------------------------------------------------------
 // Tela: Ranking (só posição dos colegas; o próprio % só para o vendedor)
 // ---------------------------------------------------------------------------
+// Foto do vendedor (coluna FOTO da METAS.xlsx); se não houver ou não carregar, mostra as iniciais
+function avatar(r, pequeno = false) {
+  const classe = pequeno ? "avatar mini" : "avatar";
+  const ini = esc(iniciais(r.nome));
+  const foto = typeof r.foto === "string" && /^https:\/\//i.test(r.foto) ? r.foto : "";
+  if (!foto) return `<div class="${classe}">${ini}</div>`;
+  return `<div class="${classe}" data-ini="${ini}"><img src="${esc(foto)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.textContent=this.parentNode.dataset.ini"></div>`;
+}
+
 function telaRanking() {
   const rk = estado.ranking || [];
   const eu = estado.perfil?.codigo;
@@ -368,7 +412,7 @@ function telaRanking() {
   const degrau = (r, classe, altura, tam) => !r ? "<div></div>" : `
     <div class="${classe}">
       ${r.supermeta ? `<span class="selo-super">SUPERMETA</span>` : ""}
-      <div class="avatar">${esc(iniciais(r.nome))}</div>
+      ${avatar(r)}
       <span class="nome">${r.codigo === eu ? "Você" : esc(r.nome)}</span>
       <div class="degrau" style="height:${altura}px;font-size:${tam}px;${classe === "primeiro" ? "background:var(--azul);color:#fff" : ""}">${r.posicao}º</div>
     </div>`;
@@ -385,10 +429,70 @@ function telaRanking() {
     </section>
     ${resto.length ? `<section class="cartao lista-rank">
       ${resto.map((r) => r.codigo === eu
-        ? `<div class="item eu"><span class="pos">${r.posicao}º</span><span class="quem">Você</span><span>seu resultado: ${pct(d?.pct_meta)}</span></div>`
-        : `<div class="item"><span class="pos">${r.posicao}º</span><span class="quem">${esc(r.nome)}</span>${r.supermeta ? `<span class="selo-super">SUPERMETA</span>` : ""}</div>`).join("")}
+        ? `<div class="item eu"><span class="pos">${r.posicao}º</span>${avatar(r, true)}<span class="quem">Você</span><span>seu resultado: ${pct(d?.pct_meta)}</span></div>`
+        : `<div class="item"><span class="pos">${r.posicao}º</span>${avatar(r, true)}<span class="quem">${esc(r.nome)}</span>${r.supermeta ? `<span class="selo-super">SUPERMETA</span>` : ""}</div>`).join("")}
     </section>` : ""}
     ${dica}`);
+}
+
+// ---------------------------------------------------------------------------
+// Tela: Equipe (diretoria/gerência)
+// ---------------------------------------------------------------------------
+function telaEquipe() {
+  const eq = estado.equipe.filter((m) => m.dados && !m.dados.sem_meta);
+  if (!eq.length) return moldura("equipe", "Equipe", "", `<section class="cartao"><p style="margin:0;font-weight:600">Ainda não há vendedores com meta e vendas neste mês.</p></section>`);
+  const tot = eq.reduce((a, m) => ({ fat: a.fat + m.dados.faturamento, meta: a.meta + m.dados.meta }), { fat: 0, meta: 0 });
+  const proj = eq.reduce((a, m) => a + (m.dados.projecao || 0), 0);
+  const bateu70 = eq.filter((m) => m.dados.premiacao?.condicoes?.faixa_70).length;
+  const liberadas = eq.filter((m) => m.dados.premiacao?.liberada);
+  const totPremio = liberadas.reduce((a, m) => a + (m.dados.premiacao.valor_hoje || 0), 0);
+  const ordem = [...eq].sort((a, b) => (b.dados.pct_meta || 0) - (a.dados.pct_meta || 0));
+  const linha = (m) => {
+    const d = m.dados, p = d.premiacao || {};
+    const cor = d.pct_meta >= 1 ? "var(--verde)" : d.pct_meta > 0.7 ? "var(--azul)" : "var(--ouro)";
+    const motivo = !p.condicoes?.faixa_70 ? "abaixo de 70%" : !p.condicoes?.lucratividade ? "lucratividade" : !p.condicoes?.identificacao ? "identificação" : "";
+    return `
+      <a class="cartao membro" href="#/v/${m.codigo}/mes">
+        <div class="linha" style="gap:12px">
+          ${avatar(m, true)}
+          <div style="flex:1;min-width:0">
+            <div class="linha-base"><strong class="nome-membro">${esc(m.nome)}</strong><span class="valor-p" style="color:${cor}">${pct(d.pct_meta)}</span></div>
+            <span class="nota" style="font-size:13px">${brl(d.faturamento)} de ${brl(d.meta)} · ritmo ${pct(d.pct_projecao)}</span>
+          </div>
+        </div>
+        <div class="barra fina"><div class="barra-cheia" style="width:${Math.min((d.pct_meta || 0) / 1.1, 1) * 100}%;background:${cor}"></div></div>
+        <div class="linha" style="font-size:13px;font-weight:600;color:var(--cinza)">
+          <span>Lucrat. ${num(d.indicadores?.lucratividade)}% · Hoje ${brl(d.hoje?.faturamento)}</span>
+          <span>${p.liberada ? `<span class="verde">Prêmio ${brl(p.valor_hoje)}</span>` : `Bloqueado${motivo ? `: ${motivo}` : ""}`}</span>
+        </div>
+      </a>`;
+  };
+  return moldura("equipe", "Equipe", `Olá, ${esc(String(estado.perfil?.nome || "").split(" ")[0])}`, `
+    <section class="cartao">
+      <div class="linha-base"><span class="rotulo">Vendido pela equipe</span><span class="rotulo">Meta ${brl(tot.meta)}</span></div>
+      <div style="display:flex;align-items:baseline;gap:8px"><span class="valor-g">${brl(tot.fat)}</span><span class="valor-p azul" style="font-size:16px">${pct(tot.meta ? tot.fat / tot.meta : 0)}</span></div>
+      <div class="barra"><div class="barra-cheia" style="width:${Math.min(tot.meta ? tot.fat / tot.meta / 1.1 : 0, 1) * 100}%"></div><div class="barra-marca" style="left:calc(${100 / 1.1}% - 1px)"></div></div>
+      <span class="nota" style="font-size:13px">Projeção do mês: ${brl(proj)} (${pct(tot.meta ? proj / tot.meta : 0)} da meta)</span>
+    </section>
+    <div class="grade-2">
+      <section class="cartao"><span class="rotulo">Passaram de 70%</span><span class="valor-m">${bateu70} de ${eq.length}</span></section>
+      <section class="cartao"><span class="rotulo">Prêmios liberados</span><span class="valor-m verde">${liberadas.length}</span><span class="nota">${brl(totPremio)} hoje</span></section>
+    </div>
+    <h2 style="margin:4px 0 0;font-size:15px;font-weight:700">Vendedores · toque para ver o detalhe</h2>
+    ${ordem.map(linha).join("")}`);
+}
+
+function equipeExemplo() {
+  const base = EXEMPLO.dados;
+  const nomes = [["Vendedor A", 1.13, true], ["Vendedor B", 0.98, true], ["Vendedor C", 0.91, true], ["Vendedor Exemplo", 0.79, false], ["Vendedor D", 0.74, false], ["Vendedor E", 0.66, false]];
+  return nomes.map(([nome, p, lib], i) => ({
+    codigo: i + 1, nome, foto: null,
+    dados: {
+      ...base, faturamento: Math.round(base.meta * p), pct_meta: p, pct_projecao: p * 1.2, projecao: Math.round(base.meta * p * 1.2),
+      hoje: { faturamento: 600 + i * 150, atendimentos: 10 + i },
+      premiacao: { ...base.premiacao, liberada: lib, valor_hoje: lib ? 900 - i * 120 : 0, condicoes: { faixa_70: p > 0.7, lucratividade: true, identificacao: lib } },
+    },
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -446,7 +550,7 @@ function telaPrimeiroAcesso(erro = "") {
 // ---------------------------------------------------------------------------
 // Navegação
 // ---------------------------------------------------------------------------
-const TELAS = { mes: telaMes, indicadores: telaIndicadores, premio: telaPremio, ranking: telaRanking };
+const TELAS = { mes: telaMes, indicadores: telaIndicadores, premio: telaPremio, ranking: telaRanking, equipe: telaEquipe };
 
 function rotaAtual() {
   return (location.hash.replace(/^#\/?/, "") || "").split("?")[0];
@@ -459,18 +563,23 @@ function render() {
     estado.erro = null;
     return;
   }
-  const tela = TELAS[rota] || TELAS.mes;
+  // gestor vendo um vendedor: #/v/<codigo>/<mes|indicadores|premio>
+  const m = rota.match(/^v\/(\d+)\/(mes|indicadores|premio)$/);
+  VER = m && estado.perfil?.gestor && membro(Number(m[1])) ? Number(m[1]) : null;
+  const nome = m && VER != null ? m[2] : rota;
+  const padrao = estado.perfil?.gestor ? TELAS.equipe : TELAS.mes;
+  const tela = (nome === "equipe" && !estado.perfil?.gestor) ? TELAS.mes : TELAS[nome] || padrao;
   app.innerHTML = tela();
   window.scrollTo(0, 0);
 }
 
 async function entrar(codigo, senha) {
-  if (DEMO) { estado.logado = true; await carregarDados(); location.hash = "#/mes"; render(); return null; }
+  if (DEMO) { estado.logado = true; await carregarDados(); location.hash = estado.perfil?.gestor ? "#/equipe" : "#/mes"; render(); return null; }
   const { error } = await sb.auth.signInWithPassword({ email: emailDo(codigo), password: senha });
   if (error) return traduzErroLogin(error.message);
   estado.logado = true;
   await carregarDados();
-  location.hash = "#/mes";
+  location.hash = estado.perfil?.gestor ? "#/equipe" : "#/mes";
   render();
   return null;
 }
@@ -489,7 +598,7 @@ async function criarAcesso(codigo, cpf, senha) {
   }
   estado.logado = true;
   await carregarDados();
-  location.hash = "#/mes";
+  location.hash = estado.perfil?.gestor ? "#/equipe" : "#/mes";
   render();
   return null;
 }

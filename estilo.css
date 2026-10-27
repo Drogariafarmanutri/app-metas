@@ -100,6 +100,9 @@ main { flex: 1; padding: 16px 16px 104px; display: flex; flex-direction: column;
 .podio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-items: end; padding: 16px 12px 0; }
 .podio > div { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
 .avatar { width: 60px; height: 60px; border-radius: 50%; background: var(--borda); border: 3px solid var(--campo); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800; color: var(--cinza); }
+.avatar { overflow: hidden; flex-shrink: 0; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar.mini { width: 36px; height: 36px; border-width: 2px; font-size: 13px; }
 .podio .primeiro .avatar { width: 72px; height: 72px; border-color: var(--ouro); font-size: 24px; }
 .podio .terceiro .avatar { border-color: #B07A4E; }
 .podio .nome { font-size: 14px; font-weight: 700; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
@@ -139,3 +142,10 @@ form.cartao { padding: 22px 20px; gap: 14px; }
 .erro { background: #FDECEC; color: #8A1C1C; border-radius: 8px; padding: 10px 12px; font-size: 14px; font-weight: 600; }
 .rodape-entrada { margin: auto 0 0; font-size: 13px; font-weight: 600; color: var(--branco); text-align: center; }
 .aviso-demo { background: var(--amarelo); text-align: center; font-size: 13px; font-weight: 700; padding: 6px; }
+
+/* --- visão de diretoria/gerência ------------------------------------------ */
+.vendo { display: flex; align-items: center; gap: 8px; background: var(--amarelo); color: var(--tinta); text-decoration: none; padding: 10px 16px; font-size: 14px; font-weight: 600; min-height: 44px; }
+.membro { text-decoration: none; color: inherit; gap: 8px; }
+.membro:active { background: var(--gelo); }
+.nome-membro { font-size: 16px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+nav.abas a { font-size: 11.5px; }
