@@ -193,3 +193,18 @@ nav.abas a { font-size: 11.5px; }
 .botao-enviar { width: 44px; height: 44px; border-radius: 12px; border: 0; background: var(--azul); color: var(--branco); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
 .botao-enviar:disabled { opacity: .5; }
 .link-mini { background: none; border: 0; padding: 0; font: inherit; color: var(--azul); text-decoration: underline; cursor: pointer; }
+
+/* --- aba Gestão (diretoria/gerência) ------------------------------------ */
+.segmentos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--branco); border-radius: 9999px; padding: 4px; }
+.segmentos button { border: 0; background: none; border-radius: 9999px; min-height: 40px; font-size: 15px; font-weight: 700; color: var(--cinza); cursor: pointer; }
+.segmentos button[aria-pressed="true"] { background: var(--azul); color: var(--branco); }
+.contador { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 9999px; background: var(--amarelo); color: var(--tinta); font-size: 12px; line-height: 20px; }
+.cartao.loja h2 { font-size: 16px; }
+.cartao.destaque { border: 2px solid var(--azul); }
+.comparar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; background: var(--gelo); border-radius: 10px; padding: 8px 10px; }
+.comparar > div { display: flex; flex-direction: column; font-size: 15px; font-weight: 700; }
+.comparar .rotulo { font-size: 12px; }
+.sobe { color: var(--verde); font-weight: 700; }
+.cai { color: #A15C00; font-weight: 700; }
+.sobe small, .cai small { font-weight: 600; color: var(--cinza); }
+.nota-linha { font-size: 13px; font-weight: 600; color: var(--cinza); flex-wrap: wrap; gap: 4px 10px; }

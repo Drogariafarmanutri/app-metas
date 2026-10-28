@@ -10,7 +10,7 @@ const DOMINIO_EMAIL = "vendedor.farmanutri.app";
 const app = document.getElementById("app");
 
 let sb = null; // cliente Supabase
-const estado = { logado: false, perfil: null, dados: null, ranking: [], equipe: [], loja: null, atualizadoEm: null, erro: null, verTodosVencendo: false,
+const estado = { logado: false, gestao: null, gestaoAba: "vendas", verTodosComprar: false, perfil: null, dados: null, ranking: [], equipe: [], loja: null, atualizadoEm: null, erro: null, verTodosVencendo: false,
   chat: [], iaCarregando: false, iaRestantes: null };
 // Gestor (diretoria/gerência) olhando os números de um vendedor: código dele; null = os próprios
 let VER = null;
@@ -56,6 +56,7 @@ const I = {
   vender: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="8" cy="8" r="1.6"/></svg>`,
   relogioP: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
   equipe: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2A5 5 0 0 1 21.5 19"/></svg>`,
+  gestao: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V10l7-5 7 5v11"/><path d="M9 21v-6h6v6"/></svg>`,
   ranking: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg>`,
 };
 
@@ -171,6 +172,7 @@ async function carregarDados() {
       loja: EXEMPLO.loja,
       atualizadoEm: EXEMPLO.atualizadoEm,
       equipe: gestor ? equipeExemplo() : [],
+      gestao: gestor ? (await import("./exemplo-gestao.js")).default : null,
     });
     return;
   }
@@ -196,6 +198,11 @@ async function carregarDados() {
   if (e3) throw e3;
   const { data: lj } = await sb.from("loja").select("dados").maybeSingle().then((r) => r, () => ({ data: null }));
   estado.loja = lj?.dados || null;
+  // painel de gestão: só diretoria/gerência (a tabela também é protegida no banco)
+  const { data: gs } = perfil.gestor
+    ? await sb.from("gestao").select("dados,atualizado_em").maybeSingle().then((r) => r, () => ({ data: null }))
+    : { data: null };
+  estado.gestao = gs?.dados ? { ...gs.dados, atualizado_em: gs.atualizado_em } : null;
   const comMes = (x) => (x ? { ...x.dados, mesano: x.mesano } : null);
   const ind = (inds || []).find((x) => x.codigo === perfil.codigo);
   estado.perfil = perfil;
@@ -228,7 +235,7 @@ function moldura(aba, titulo, subtitulo, corpo) {
   const vendo = VER != null ? membro(VER) : null;
   const abas = vendo
     ? [["equipe", "Equipe", I.equipe], ...abasDe("mes", "indicadores", "premio").map(([id, rot, ic]) => [`v/${VER}/${id}`, rot.replace("Meu ", ""), ic, id])]
-    : estado.perfil?.gestor ? [["equipe", "Equipe", I.equipe], ["assistente", "Assistente", I.ia], ...abasDe("vender", "ranking")] : ABAS;
+    : estado.perfil?.gestor ? [["equipe", "Equipe", I.equipe], ["gestao", "Gestão", I.gestao], ["assistente", "Assistente", I.ia], ...abasDe("vender", "ranking")] : ABAS;
   return `
     ${DEMO ? `<div class="aviso-demo">Modo demonstração · números de exemplo</div>` : ""}
     <header class="topo">
@@ -586,6 +593,124 @@ function telaEquipe() {
 }
 
 // ---------------------------------------------------------------------------
+// Tela: Gestão (diretoria/gerência) — vendas por loja, estoque e alertas
+// ---------------------------------------------------------------------------
+// variação com seta: "+5%" verde, "−3%" em destaque de atenção
+const variacao = (v, rot = "") => (v == null ? `<span class="nota">${rot ? rot + " " : ""}–</span>`
+  : `<span class="${v >= 0 ? "sobe" : "cai"}">${v >= 0 ? "▲" : "▼"} ${pct(Math.abs(v), Math.abs(v) < 0.1 ? 1 : 0)}${rot ? ` <small>${rot}</small>` : ""}</span>`);
+const pontos = (v) => (v == null ? "" : `<span class="${v >= 0 ? "sobe" : "cai"}">${v >= 0 ? "▲" : "▼"} ${num(Math.abs(v))} p.p.</span>`);
+const qtd = (v) => num(v, Number.isInteger(v) ? 0 : 1);
+
+function cartaoVendaLoja(v, m, destaque) {
+  const meta = v.pct_meta;
+  const cor = meta == null ? "var(--azul)" : (v.pct_projecao_meta ?? meta) >= 1 ? "var(--verde)" : (v.pct_projecao_meta ?? meta) >= 0.9 ? "var(--azul)" : "var(--ouro)";
+  return `
+    <section class="cartao loja${destaque ? " destaque" : ""}">
+      <div class="linha-base"><h2 style="margin:0">${esc(v.loja)}</h2>${meta != null ? `<span class="valor-p" style="color:${cor}">${pct(meta)}</span>` : ""}</div>
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><span class="${destaque ? "valor-g" : "valor-m"}">${brl(v.vendido_mes)}</span>${v.meta_loja ? `<span class="nota">de ${brl(v.meta_loja)}</span>` : ""}</div>
+      ${v.meta_loja ? `<div class="barra fina"><div class="barra-cheia" style="width:${Math.min(meta || 0, 1) * 100}%;background:${cor}"></div><div class="barra-marca" style="left:calc(${Math.min((v.meta_ate_hoje || 0) / v.meta_loja, 1) * 100}% - 1px)" title="onde deveria estar hoje"></div></div>` : ""}
+      <div class="comparar">
+        <div><span class="rotulo">vs mês passado</span>${variacao(v.variacao_vs_mes_anterior)}</div>
+        <div><span class="rotulo">vs ano passado</span>${variacao(v.variacao_vs_ano_passado)}</div>
+        <div><span class="rotulo">Projeção</span><strong>${v.pct_projecao_meta != null ? pct(v.pct_projecao_meta) : brl(v.projecao_mes)}</strong></div>
+      </div>
+      <div class="linha nota-linha">
+        <span>Ticket ${brl(v.ticket_medio, 2)} · ${num(v.atendimentos_por_dia, 0)} atend./dia</span>
+        ${m ? `<span>Lucrat. ${num(m.lucratividade)}% ${pontos(m.variacao_lucratividade_pontos)}</span>` : ""}
+      </div>
+      ${destaque ? `<span class="nota">Hoje: ${brl(v.vendido_hoje)} em ${v.atendimentos_hoje} atendimentos</span>` : ""}
+    </section>`;
+}
+
+function gestaoVendas(g) {
+  const v = g.vendas;
+  if (!v) return `<section class="cartao"><p style="margin:0;font-weight:600">As vendas por loja aparecem depois da próxima sincronização.</p></section>`;
+  const mg = Object.fromEntries([g.margem?.total, ...(g.margem?.lojas || [])].filter(Boolean).map((x) => [x.loja, x]));
+  const eq = estado.equipe.filter((m) => m.dados?.campanhas);
+  const camp = eq.length ? Object.entries(eq[0].dados.campanhas).map(([chave, c]) => {
+    const bateram = eq.filter((m) => m.dados.campanhas[chave]?.ok);
+    return `<div class="prod"><div class="prod-nome">${esc(c.nome)}<span class="nota">meta ${c.meta.toLocaleString("pt-BR")} · ${bateram.length ? esc(bateram.map((m) => m.nome).join(", ")) : "ninguém ainda"}</span></div><span class="selo${bateram.length ? " verde" : ""}">${bateram.length}/${eq.length}</span></div>`;
+  }).join("") : "";
+  return `
+    ${cartaoVendaLoja(v.total, mg["Total da rede"], true)}
+    <p class="nota" style="margin:-4px 4px 0">${esc(v.regra_meta || "")}. A marca na barra é onde a loja deveria estar hoje.</p>
+    ${v.lojas.map((l) => cartaoVendaLoja(l, mg[l.loja])).join("")}
+    ${camp ? `<section class="cartao lista-prod"><h2>Campanhas · quem já bateu</h2>${camp}</section>` : ""}`;
+}
+
+function gestaoEstoque(g) {
+  const e = g.estoque;
+  if (!e) return `<section class="cartao"><p style="margin:0;font-weight:600">O estoque aparece depois que o sincronizador tiver acesso às tabelas de estoque.</p></section>`;
+  const comprar = estado.verTodosComprar ? e.comprar : (e.comprar || []).slice(0, 8);
+  return `
+    <div class="grade-2">
+      <section class="cartao"><span class="rotulo">Estoque a custo</span><span class="valor-m">${brl(e.valor_custo_total)}</span></section>
+      <section class="cartao"><span class="rotulo">Parado +90 dias</span><span class="valor-m">${brl(e.parados_valor_total)}</span><span class="nota">${pct(e.valor_custo_total ? e.parados_valor_total / e.valor_custo_total : null, 1)} do estoque</span></section>
+    </div>
+    <section class="cartao lista-prod">
+      <h2>Por loja</h2>
+      ${(e.lojas || []).map((l) => `<div class="prod"><div class="prod-nome">${esc(l.loja)}<span class="nota">${qtd(l.produtos_com_saldo)} produtos · cobertura ${l.cobertura_dias ?? "–"} dias${l.zerados_que_venderam_30d ? ` · ${l.zerados_que_venderam_30d} zerados que vendem` : ""}</span></div><strong>${brl(l.valor_custo)}</strong></div>`).join("")}
+    </section>
+    ${e.comprar?.length ? `
+    <section class="cartao lista-prod">
+      <h2>Comprar · abaixo do ponto de pedido <span class="rotulo">(${e.comprar_total_itens} itens · ~${brl(e.comprar_custo_estimado)})</span></h2>
+      ${comprar.map((c) => `<div class="prod"><div class="prod-nome">${esc(c.nome)}<span class="nota">${esc(c.loja)} · tem ${qtd(c.saldo)}, ponto ${qtd(c.ponto_pedido)}${c.curva ? ` · curva ${esc(c.curva)}` : ""}${c.transferir_de ? `<br><b class="azul">Transferir de ${esc(c.transferir_de.map((t) => `${t.loja} (sobra ${qtd(t.sobra)})`).join(", "))}</b>` : ""}</span></div><span class="selo">+${qtd(c.sugerido)}</span></div>`).join("")}
+      ${(e.comprar || []).length > 8 ? `<button class="link" type="button" data-acao="todos-comprar">${estado.verTodosComprar ? "Mostrar menos" : `Ver os ${e.comprar.length} mais importantes`}</button>` : ""}
+    </section>` : ""}
+    ${g.acabando?.length ? `
+    <section class="cartao lista-prod">
+      <h2>Acabando · vendem bem e têm menos de 3 dias</h2>
+      ${g.acabando.slice(0, 10).map((a) => `<div class="prod"><div class="prod-nome">${esc(a.nome)}<span class="nota">${esc(a.loja)} · vendeu ${qtd(a.venda_30d)} em 30 dias</span></div><span class="vence ${a.qtd <= 0 ? "urgente" : "atencao"}">${a.qtd <= 0 ? "zerado" : `${num(a.dias_de_estoque)} d`}</span></div>`).join("")}
+    </section>` : ""}
+    ${e.parados?.length ? `
+    <section class="cartao lista-prod">
+      <h2>Parados · sem venda há mais de 90 dias</h2>
+      ${e.parados.slice(0, 10).map((p) => `<div class="prod"><div class="prod-nome">${esc(p.nome)}<span class="nota">${esc(p.loja)} · ${qtd(p.saldo)} un. · ${p.dias_sem_venda != null ? `${p.dias_sem_venda} dias sem venda` : "sem venda registrada"}</span></div><strong>${brl(p.valor_custo)}</strong></div>`).join("")}
+    </section>` : ""}`;
+}
+
+function gestaoAlertas(g) {
+  const n = g.notas_pendentes, r = g.rupturas, p = g.perdas_devolucoes, b = g.balanco;
+  const blocos = [];
+  if (n) blocos.push(`
+    <section class="cartao lista-prod">
+      <h2>Notas pendentes <span class="rotulo">(${n.total} · ${brl(n.valor_total)})</span></h2>
+      ${n.total ? n.por_loja_e_tipo.map((x) => `<div class="prod"><div class="prod-nome">${esc(x.tipo)}<span class="nota">${esc(x.loja)} · ${x.quantidade} nota${x.quantidade > 1 ? "s" : ""} · mais antiga há ${x.mais_antiga_dias} dias</span></div><strong>${brl(x.valor)}</strong></div>`).join("")
+        : `<p class="nota" style="margin:0">Nenhuma nota pendente.</p>`}
+    </section>`);
+  if (r) blocos.push(`
+    <section class="cartao lista-prod">
+      <h2>Rupturas abertas <span class="rotulo">(${r.total_produtos} produtos)</span></h2>
+      <p class="nota" style="margin:0 0 6px">Venda perdida estimada: <strong>${brl(r.venda_perdida_estimada)}</strong></p>
+      ${(r.maiores || []).slice(0, 8).map((x) => `<div class="prod"><div class="prod-nome">${esc(x.nome)}<span class="nota">${esc(x.loja)} · ${x.dias_em_falta} dias em falta${x.curva ? ` · curva ${esc(x.curva)}` : ""}</span></div><strong>${brl(x.venda_perdida_estimada)}</strong></div>`).join("")}
+    </section>`);
+  if (p) blocos.push(`
+    <section class="cartao lista-prod">
+      <h2>Perdas e devoluções</h2>
+      ${p.por_mes.map((x) => `<div class="prod"><div class="prod-nome">${esc(x.mes)}<span class="nota">dev. cliente ${brl(x.devolucao_cliente || 0)} · dev. fornecedor ${brl(x.devolucao_fornecedor || 0)}</span></div><span><span class="rotulo">perdas</span> <strong>${brl(x.perdas || 0)}</strong></span></div>`).join("")}
+    </section>`);
+  if (b?.por_loja?.length) blocos.push(`
+    <section class="cartao lista-prod">
+      <h2>Balanço · últimos ${b.periodo_dias} dias</h2>
+      ${b.por_loja.map((x) => `<div class="prod"><div class="prod-nome">${esc(x.loja)}<span class="nota">${x.itens_divergentes} de ${x.itens_contados} itens com diferença · sobras ${brl(x.sobras_valor)}</span></div><span><span class="rotulo">faltas</span> <strong>${brl(x.faltas_valor)}</strong></span></div>`).join("")}
+    </section>`);
+  return blocos.join("") || `<section class="cartao"><p style="margin:0;font-weight:600">Sem alertas por enquanto.</p></section>`;
+}
+
+function telaGestao() {
+  const g = estado.gestao;
+  if (!g) return moldura("gestao", "Gestão", "", `<section class="cartao"><p style="margin:0;font-weight:600">Os números de gestão aparecem depois da próxima sincronização (o sincronizador precisa estar atualizado e a tabela "gestao" criada no banco).</p></section>`);
+  const abas = [["vendas", "Vendas"], ["estoque", "Estoque"], ["alertas", "Alertas"]];
+  const qtdAlertas = (g.notas_pendentes?.total || 0) + (g.rupturas?.maiores?.filter((x) => x.curva === "A").length || 0);
+  const corpo = { vendas: gestaoVendas, estoque: gestaoEstoque, alertas: gestaoAlertas }[estado.gestaoAba] || gestaoVendas;
+  return moldura("gestao", "Gestão", "Todas as lojas", `
+    <div class="segmentos" role="group" aria-label="Assunto">
+      ${abas.map(([id, rot]) => `<button type="button" data-gestao-aba="${id}" aria-pressed="${estado.gestaoAba === id}">${rot}${id === "alertas" && qtdAlertas ? ` <span class="contador">${qtdAlertas}</span>` : ""}</button>`).join("")}
+    </div>
+    ${corpo(g)}`);
+}
+
+// ---------------------------------------------------------------------------
 // Tela: Assistente com IA (só diretoria/gerência)
 // ---------------------------------------------------------------------------
 const SUGESTOES = [
@@ -680,6 +805,12 @@ function equipeExemplo() {
       ...base, faturamento: Math.round(base.meta * p), pct_meta: p, pct_projecao: p * 1.2, projecao: Math.round(base.meta * p * 1.2),
       hoje: { faturamento: 600 + i * 150, atendimentos: 10 + i },
       premiacao: { ...base.premiacao, liberada: lib, valor_hoje: lib ? 900 - i * 120 : 0, condicoes: { faixa_70: p > 0.7, lucratividade: true, identificacao: lib } },
+      campanhas: {
+        genericos_similares: { nome: "Genéricos e similares (R$)", realizado: 5200 - i * 700, meta: 4500, ok: 5200 - i * 700 >= 4500 },
+        perfumaria: { nome: "Perfumaria (R$)", realizado: 2900 - i * 500, meta: 2500, ok: 2900 - i * 500 >= 2500 },
+        campanha_indicacao: { nome: "Campanha de indicação (un.)", realizado: 8 - i, meta: 5, ok: 8 - i > 5 },
+        centrotab: { nome: "Centrotab (un.)", realizado: i, meta: 5, ok: false },
+      },
     },
   }));
 }
@@ -738,8 +869,8 @@ function telaPrimeiroAcesso(erro = "") {
 // ---------------------------------------------------------------------------
 // Navegação
 // ---------------------------------------------------------------------------
-const TELAS = { mes: telaMes, indicadores: telaIndicadores, vender: telaVender, premio: telaPremio, ranking: telaRanking, equipe: telaEquipe, assistente: telaAssistente };
-const SO_GESTOR = new Set(["equipe", "assistente"]);
+const TELAS = { mes: telaMes, indicadores: telaIndicadores, vender: telaVender, premio: telaPremio, ranking: telaRanking, equipe: telaEquipe, gestao: telaGestao, assistente: telaAssistente };
+const SO_GESTOR = new Set(["equipe", "gestao", "assistente"]);
 
 function rotaAtual() {
   return (location.hash.replace(/^#\/?/, "") || "").split("?")[0];
@@ -841,9 +972,18 @@ app.addEventListener("click", async (e) => {
     window.scrollTo(0, y);
     return;
   }
+  const seg = e.target.closest("[data-gestao-aba]");
+  if (seg) { estado.gestaoAba = seg.dataset.gestaoAba; render(); return; }
+  if (e.target.closest("[data-acao=todos-comprar]")) {
+    estado.verTodosComprar = !estado.verTodosComprar;
+    const y = window.scrollY;
+    render();
+    window.scrollTo(0, y);
+    return;
+  }
   if (e.target.closest("[data-acao=sair]")) {
     if (!DEMO && sb) await sb.auth.signOut();
-    Object.assign(estado, { logado: false, perfil: null, dados: null, ranking: [] });
+    Object.assign(estado, { logado: false, perfil: null, dados: null, ranking: [], gestao: null, equipe: [] });
     location.hash = "#/login";
     render();
   }
