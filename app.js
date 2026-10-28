@@ -10,7 +10,8 @@ const DOMINIO_EMAIL = "vendedor.farmanutri.app";
 const app = document.getElementById("app");
 
 let sb = null; // cliente Supabase
-const estado = { logado: false, perfil: null, dados: null, ranking: [], equipe: [], loja: null, atualizadoEm: null, erro: null, verTodosVencendo: false };
+const estado = { logado: false, perfil: null, dados: null, ranking: [], equipe: [], loja: null, atualizadoEm: null, erro: null, verTodosVencendo: false,
+  chat: [], iaCarregando: false, iaRestantes: null };
 // Gestor (diretoria/gerência) olhando os números de um vendedor: código dele; null = os próprios
 let VER = null;
 const membro = (codigo) => estado.equipe.find((m) => m.codigo === codigo) || null;
@@ -50,6 +51,8 @@ const I = {
   mes: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>`,
   indicadores: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>`,
   premio: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 12h18M12 8c-2-4-6-4-6-1.5S10 8 12 8zm0 0c2-4 6-4 6-1.5S14 8 12 8z"/></svg>`,
+  ia: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z"/><path d="M12 8.2l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z"/></svg>`,
+  enviar: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7"/></svg>`,
   vender: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="8" cy="8" r="1.6"/></svg>`,
   relogioP: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
   equipe: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2A5 5 0 0 1 21.5 19"/></svg>`,
@@ -225,7 +228,7 @@ function moldura(aba, titulo, subtitulo, corpo) {
   const vendo = VER != null ? membro(VER) : null;
   const abas = vendo
     ? [["equipe", "Equipe", I.equipe], ...abasDe("mes", "indicadores", "premio").map(([id, rot, ic]) => [`v/${VER}/${id}`, rot.replace("Meu ", ""), ic, id])]
-    : estado.perfil?.gestor ? [["equipe", "Equipe", I.equipe], ...abasDe("vender", "ranking")] : ABAS;
+    : estado.perfil?.gestor ? [["equipe", "Equipe", I.equipe], ["assistente", "Assistente", I.ia], ...abasDe("vender", "ranking")] : ABAS;
   return `
     ${DEMO ? `<div class="aviso-demo">Modo demonstração · números de exemplo</div>` : ""}
     <header class="topo">
@@ -582,6 +585,92 @@ function telaEquipe() {
     ${ordem.map(linha).join("")}`);
 }
 
+// ---------------------------------------------------------------------------
+// Tela: Assistente com IA (só diretoria/gerência)
+// ---------------------------------------------------------------------------
+const SUGESTOES = [
+  "Quem precisa de atenção hoje e por quê?",
+  "Quais prêmios estão bloqueados e o que destrava cada um?",
+  "Resuma a equipe em 5 linhas.",
+  "Como está a venda de produtos vencendo? O que priorizar?",
+  "Monte um roteiro de feedback para quem está abaixo de 70%.",
+];
+
+// Texto da IA -> HTML seguro (escapa tudo; só **negrito**, listas "- " e quebras de linha)
+function formatarIA(texto) {
+  const linhas = esc(texto).split(/\r?\n/);
+  let html = "", lista = false;
+  for (const l of linhas) {
+    const item = l.match(/^\s*[-•*]\s+(.*)$/);
+    if (item) { if (!lista) { html += "<ul>"; lista = true; } html += `<li>${item[1]}</li>`; continue; }
+    if (lista) { html += "</ul>"; lista = false; }
+    html += l.trim() ? `<p>${l}</p>` : "";
+  }
+  if (lista) html += "</ul>";
+  return html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+}
+
+function telaAssistente() {
+  const msgs = estado.chat;
+  const inicio = !msgs.length ? `
+    <section class="cartao" style="gap:8px">
+      <h2>Pergunte sobre a equipe</h2>
+      <p style="margin:0;font-size:14px;line-height:19px">Eu uso os números do app (metas, prêmios, ranking, vencendo e promoções) para responder. Toque numa sugestão ou escreva sua pergunta.</p>
+      <div class="sugestoes">${SUGESTOES.map((t) => `<button type="button" class="sugestao" data-pergunta="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+    </section>` : "";
+  const bolhas = msgs.map((m) => m.role === "user"
+    ? `<div class="bolha eu">${esc(m.content)}</div>`
+    : `<div class="bolha ia ${m.erro ? "erro-ia" : ""}">${m.erro ? esc(m.content) : formatarIA(m.content)}</div>`).join("");
+  const pensando = estado.iaCarregando ? `<div class="bolha ia pensando" aria-label="Pensando"><span></span><span></span><span></span></div>` : "";
+  return moldura("assistente", "Assistente", "Inteligência artificial · só gestão", `
+    ${inicio}
+    <div class="conversa" aria-live="polite">${bolhas}${pensando}</div>
+    <form id="form-ia" class="caixa-ia" autocomplete="off">
+      <label for="pergunta-ia" class="sr">Sua pergunta</label>
+      <textarea id="pergunta-ia" name="pergunta" rows="1" maxlength="800" placeholder="Faça sua pergunta…" ${estado.iaCarregando ? "disabled" : ""}></textarea>
+      <button type="submit" class="botao-enviar" aria-label="Enviar pergunta" ${estado.iaCarregando ? "disabled" : ""}>${I.enviar}</button>
+    </form>
+    <p class="nota centro" style="margin:0">A IA pode errar: confira os números nas telas. Não use para dúvidas de saúde.${estado.iaRestantes != null ? ` · ${estado.iaRestantes} perguntas restantes hoje` : ""}
+      ${msgs.length ? ` · <button type="button" class="link-mini" data-acao="limpar-chat">limpar conversa</button>` : ""}</p>`);
+}
+
+async function perguntarIA(pergunta) {
+  if (DEMO) {
+    await new Promise((r) => setTimeout(r, 700));
+    return { resposta: "**Modo demonstração.** No app real eu respondo com os números da equipe.\n- **Vendedor E** está com 66% e prêmio bloqueado (abaixo de 70%).\n- **Vendedor D** está com 74%, mas a identificação trava o prêmio.\nAção: peça CPF em todas as vendas hoje.", restantes_hoje: 29 };
+  }
+  const { data } = await sb.auth.getSession();
+  const token = data.session?.access_token;
+  const historico = estado.chat.filter((m) => !m.erro).slice(0, -1).slice(-8).map(({ role, content }) => ({ role, content }));
+  const r = await fetch(`${CFG.SUPABASE_URL.replace(/\/rest\/v1\/?$/, "")}/functions/v1/assistente`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, apikey: CFG.SUPABASE_ANON_KEY },
+    body: JSON.stringify({ pergunta, historico }),
+  });
+  const corpo = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(corpo.erro || `Erro ${r.status}`), { amigavel: corpo.erro, restantes: corpo.restantes_hoje });
+  return corpo;
+}
+
+async function enviarPergunta(texto) {
+  const pergunta = String(texto || "").trim();
+  if (!pergunta || estado.iaCarregando) return;
+  estado.chat.push({ role: "user", content: pergunta });
+  estado.iaCarregando = true;
+  render();
+  try {
+    const r = await perguntarIA(pergunta);
+    estado.chat.push({ role: "assistant", content: r.resposta });
+    if (r.restantes_hoje != null) estado.iaRestantes = r.restantes_hoje;
+  } catch (ex) {
+    console.error(ex);
+    estado.chat.push({ role: "assistant", erro: true, content: ex.amigavel || (/fetch|network/i.test(ex.message) ? "Sem conexão com a internet. Tente de novo." : "Não consegui responder agora. Tente de novo em instantes.") });
+    if (ex.restantes != null) estado.iaRestantes = ex.restantes;
+  }
+  estado.iaCarregando = false;
+  if (rotaAtual() === "assistente") { render(); document.getElementById("pergunta-ia")?.focus(); }
+}
+
 function equipeExemplo() {
   const base = EXEMPLO.dados;
   const nomes = [["Vendedor A", 1.13, true], ["Vendedor B", 0.98, true], ["Vendedor C", 0.91, true], ["Vendedor Exemplo", 0.79, false], ["Vendedor D", 0.74, false], ["Vendedor E", 0.66, false]];
@@ -649,7 +738,8 @@ function telaPrimeiroAcesso(erro = "") {
 // ---------------------------------------------------------------------------
 // Navegação
 // ---------------------------------------------------------------------------
-const TELAS = { mes: telaMes, indicadores: telaIndicadores, vender: telaVender, premio: telaPremio, ranking: telaRanking, equipe: telaEquipe };
+const TELAS = { mes: telaMes, indicadores: telaIndicadores, vender: telaVender, premio: telaPremio, ranking: telaRanking, equipe: telaEquipe, assistente: telaAssistente };
+const SO_GESTOR = new Set(["equipe", "assistente"]);
 
 function rotaAtual() {
   return (location.hash.replace(/^#\/?/, "") || "").split("?")[0];
@@ -667,9 +757,10 @@ function render() {
   VER = m && estado.perfil?.gestor && membro(Number(m[1])) ? Number(m[1]) : null;
   const nome = m && VER != null ? m[2] : rota;
   const padrao = estado.perfil?.gestor ? TELAS.equipe : TELAS.mes;
-  const tela = (nome === "equipe" && !estado.perfil?.gestor) ? TELAS.mes : TELAS[nome] || padrao;
+  const tela = (SO_GESTOR.has(nome) && !estado.perfil?.gestor) ? TELAS.mes : TELAS[nome] || padrao;
   app.innerHTML = tela();
-  window.scrollTo(0, 0);
+  // no assistente, mostra a última mensagem; nas outras telas, o topo
+  window.scrollTo(0, nome === "assistente" && estado.chat.length ? document.body.scrollHeight : 0);
 }
 
 async function entrar(codigo, senha) {
@@ -705,6 +796,10 @@ async function criarAcesso(codigo, cpf, senha) {
 app.addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = e.target;
+  if (form.id === "form-ia") {
+    enviarPergunta(form.querySelector("textarea")?.value);
+    return;
+  }
   const botao = form.querySelector("button[type=submit]");
   const f = Object.fromEntries(new FormData(form));
   let erro = null;
@@ -736,6 +831,9 @@ app.addEventListener("submit", async (e) => {
 });
 
 app.addEventListener("click", async (e) => {
+  const sug = e.target.closest("[data-pergunta]");
+  if (sug) { enviarPergunta(sug.dataset.pergunta); return; }
+  if (e.target.closest("[data-acao=limpar-chat]")) { estado.chat = []; render(); return; }
   if (e.target.closest("[data-acao=todos-vencendo]")) {
     estado.verTodosVencendo = !estado.verTodosVencendo;
     const y = window.scrollY;
@@ -752,6 +850,12 @@ app.addEventListener("click", async (e) => {
 });
 
 window.addEventListener("hashchange", render);
+app.addEventListener("keydown", (e) => {
+  if (e.target.id === "pergunta-ia" && e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    enviarPergunta(e.target.value);
+  }
+});
 
 // Atualiza os números ao voltar para o app e a cada 5 minutos
 async function atualizar() {

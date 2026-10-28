@@ -170,3 +170,26 @@ nav.abas a { font-size: 11.5px; }
 .simbolo { width: 26px; height: 26px; border-radius: 6px; display: block; background: #000; }
 .logo-img { width: 200px; height: auto; border-radius: 24px; background: #000; padding: 10px; box-sizing: content-box; }
 @media (max-height: 700px) { .logo-img { width: 150px; } }
+
+/* --- assistente (IA) ------------------------------------------------------- */
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.sugestoes { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.sugestao { text-align: left; background: var(--gelo); border: 1px solid var(--borda); border-radius: 12px; padding: 10px 12px; font: inherit; font-size: 14px; font-weight: 600; color: var(--tinta); min-height: 44px; cursor: pointer; }
+.conversa { display: flex; flex-direction: column; gap: 10px; }
+.bolha { max-width: 88%; padding: 10px 14px; border-radius: 16px; font-size: 15px; line-height: 21px; }
+.bolha p { margin: 0 0 6px; } .bolha p:last-child { margin-bottom: 0; }
+.bolha ul { margin: 4px 0 6px; padding-left: 20px; } .bolha li { margin: 2px 0; }
+.bolha.eu { align-self: flex-end; background: var(--azul); color: var(--branco); border-bottom-right-radius: 4px; white-space: pre-wrap; }
+.bolha.ia { align-self: flex-start; background: var(--branco); border-bottom-left-radius: 4px; }
+.bolha.erro-ia { background: #FDECEC; color: #8A1C1C; font-weight: 600; }
+.bolha.pensando { display: flex; gap: 5px; padding: 14px 16px; }
+.bolha.pensando span { width: 8px; height: 8px; border-radius: 50%; background: var(--campo); animation: pulsa 1s infinite ease-in-out; }
+.bolha.pensando span:nth-child(2) { animation-delay: .15s; } .bolha.pensando span:nth-child(3) { animation-delay: .3s; }
+@keyframes pulsa { 0%, 80%, 100% { opacity: .3; transform: scale(.8); } 40% { opacity: 1; transform: scale(1); } }
+.caixa-ia { position: sticky; bottom: calc(env(safe-area-inset-bottom) + 72px); display: flex; gap: 8px; align-items: flex-end; background: var(--branco); border: 1.5px solid var(--campo); border-radius: 16px; padding: 6px 6px 6px 12px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+.caixa-ia textarea { flex: 1; border: 0; resize: none; font: inherit; font-size: 16px; line-height: 22px; padding: 8px 0; max-height: 120px; background: transparent; color: var(--tinta); }
+.caixa-ia textarea:focus { outline: none; }
+.caixa-ia:focus-within { border-color: var(--azul); outline: 2px solid var(--azul); }
+.botao-enviar { width: 44px; height: 44px; border-radius: 12px; border: 0; background: var(--azul); color: var(--branco); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+.botao-enviar:disabled { opacity: .5; }
+.link-mini { background: none; border: 0; padding: 0; font: inherit; color: var(--azul); text-decoration: underline; cursor: pointer; }
