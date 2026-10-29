@@ -1,6 +1,6 @@
 // Service worker: guarda a "casca" do app para abrir rápido e funcionar
 // como aplicativo instalado. Os números sempre vêm da internet (nunca do cache).
-const VERSAO = "metas-v9";
+const VERSAO = "metas-v10";
 const CASCA = [
   "./",
   "index.html",

@@ -147,6 +147,7 @@ const EXEMPLO = {
       { codigo: 48163, nome: "MAGNESIO DIMALATO 500MG C/60 CAPS", estoque: 61, preco: 34.9, vendidos_mes: 310 },
     ],
     campanha_indicacao_regra: { limite_semanal: 4, valor_ate_limite: 5, valor_acima_limite: 7 },
+    campanha_indicacao_periodo: { mes: "10/2026", inicio: "2026-09-28", fim: "2026-10-25", semana_atual: { inicio: "2026-10-26", fim: "2026-11-01", mes: "11/2026" } },
     sazonais: [
       { chave: "este_mes", mes: 10, ano: 2025, itens: [{ codigo: 51, nome: "REPELENTE SPRAY 100ML", posicao: 1 }, { codigo: 52, nome: "PARACETAMOL 750MG 20 COMP", posicao: 2 }] },
       { chave: "proximo_mes", mes: 11, ano: 2025, itens: [{ codigo: 53, nome: "PROTETOR SOLAR FPS 50 200ML", posicao: 1 }] },
@@ -343,6 +344,19 @@ function telaMes() {
 // Campanha de indicação (grupo 30): prêmio em dinheiro à parte da premiação.
 // Regra: semana inteira (seg a dom), até 4 unidades R$ 5,00 cada; acima de 4, todas da semana a R$ 7,00.
 // A semana é paga no mês em que termina; vendas canceladas e unidades devolvidas não contam.
+// Posição em listas: o vendedor só vê se estiver entre os 3 primeiros (evita expor últimos lugares);
+// a gestão vê sempre, com o total.
+const posicaoTexto = (pos, total) => (!pos ? "" : estado.perfil?.gestor ? `${pos}º de ${total}` : pos <= 3 ? `${pos}º lugar` : "");
+const MESES_NOME = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const nomeMesAno = (mmYYYY) => (mmYYYY ? MESES_NOME[Number(mmYYYY.slice(0, 2)) - 1] : "");
+// "Período de outubro: 28/09 a 25/10" (+ aviso da semana que já conta para o mês seguinte)
+function periodoCampanha(curto) {
+  const p = estado.loja?.campanha_indicacao_periodo;
+  if (!p) return "";
+  const prox = p.semana_atual && p.semana_atual.mes !== p.mes;
+  return `<div class="periodo">${I.relogioP}<span>Período de ${nomeMesAno(p.mes)}: <b>${dataCurta(p.inicio)} a ${dataCurta(p.fim)}</b>${prox && !curto ? ` · a semana ${dataCurta(p.semana_atual.inicio)}–${dataCurta(p.semana_atual.fim)} já conta para ${nomeMesAno(p.semana_atual.mes)}` : ""}</span></div>`;
+}
+
 function blocoIndicacao(d, completo) {
   const c = d?.campanha_indicacao;
   if (!c) return "";
@@ -355,14 +369,15 @@ function blocoIndicacao(d, completo) {
   return `
     <section class="cartao indicacao" style="gap:8px">
       <div class="linha-base"><h2 style="margin:0">Campanha Indicação</h2><span class="selo verde">prêmio à parte</span></div>
+      ${periodoCampanha(!completo)}
       <div class="linha" style="align-items:flex-end">
         <div style="display:flex;flex-direction:column">
-          <span class="rotulo">Você ganha no mês</span>
+          <span class="rotulo">Você ganha no período</span>
           <span class="valor-m verde">${brl(c.ganho_estimado || 0, 2)}</span>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end">
           <span class="valor-p">${num(c.unidades, 0)} <span class="rotulo">un.</span></span>
-          <span class="nota">${c.posicao ? `${c.posicao}º de ${c.participantes} na equipe` : "no mês"}</span>
+          <span class="nota">${posicaoTexto(c.posicao, c.participantes) ? `${posicaoTexto(c.posicao, c.participantes)} na equipe` : "no período"}</span>
         </div>
       </div>
       <div class="mini-cartao" style="gap:6px">
@@ -513,6 +528,7 @@ function telaRanking() {
   const rk = estado.ranking || [];
   const eu = estado.perfil?.codigo;
   const d = estado.dados;
+  const gestor = !!estado.perfil?.gestor;
   if (!rk.length) return moldura("ranking", "Ranking do mês", "", `<section class="cartao"><p style="margin:0;font-weight:600">O ranking aparece assim que houver vendas no mês.</p></section>`);
   const porPos = (n) => rk.find((r) => r.posicao === n);
   const degrau = (r, classe, altura, tam) => !r ? "<div></div>" : `
@@ -522,23 +538,37 @@ function telaRanking() {
       <span class="nome">${r.codigo === eu ? "Você" : esc(r.nome)}</span>
       <div class="degrau" style="height:${altura}px;font-size:${tam}px;${classe === "primeiro" ? "background:var(--azul);color:#fff" : ""}">${r.posicao}º</div>
     </div>`;
-  const resto = rk.filter((r) => r.posicao > 3);
-  const minhaPos = d?.ranking?.posicao;
-  const dica = minhaPos && minhaPos > 3
-    ? `<section class="cartao" style="flex-direction:row;align-items:center;gap:12px">${I.subir}<span style="font-size:14px;font-weight:600;line-height:18px">Você está a <strong>${minhaPos - 3} ${minhaPos - 3 === 1 ? "posição" : "posições"}</strong> do pódio. Cada venda conta!</span></section>`
-    : minhaPos ? `<section class="cartao" style="flex-direction:row;align-items:center;gap:12px">${I.subir}<span style="font-size:14px;font-weight:600">Você está no pódio! Continue assim.</span></section>` : "";
-  return moldura("ranking", "Ranking do mês", "", `
+  const podio = `
     <section class="cartao podio" style="padding-bottom:0">
       ${degrau(porPos(2), "segundo", 56, 24)}
       ${degrau(porPos(1), "primeiro", 80, 28)}
       ${degrau(porPos(3), "terceiro", 40, 22)}
-    </section>
-    ${resto.length ? `<section class="cartao lista-rank">
-      ${resto.map((r) => r.codigo === eu
-        ? `<div class="item eu"><span class="pos">${r.posicao}º</span>${avatar(r, true)}<span class="quem">Você</span><span>seu resultado: ${pct(d?.pct_meta)}</span></div>`
-        : `<div class="item"><span class="pos">${r.posicao}º</span>${avatar(r, true)}<span class="quem">${esc(r.nome)}</span>${r.supermeta ? `<span class="selo-super">SUPERMETA</span>` : ""}</div>`).join("")}
-    </section>` : ""}
-    ${dica}`);
+    </section>`;
+  // Diretoria/gerência: lista completa (só ela vê; o banco não entrega as outras posições aos vendedores)
+  if (gestor) {
+    const resto = rk.filter((r) => r.posicao > 3);
+    return moldura("ranking", "Ranking do mês", "", `
+      ${podio}
+      ${resto.length ? `<section class="cartao lista-rank">
+        ${resto.map((r) => `<div class="item"><span class="pos">${r.posicao}º</span>${avatar(r, true)}<span class="quem">${esc(r.nome)}</span>${r.supermeta ? `<span class="selo-super">SUPERMETA</span>` : ""}</div>`).join("")}
+      </section>` : ""}
+      <p class="nota centro" style="margin:0">Visão da gestão. Os vendedores veem só o pódio e a própria posição.</p>`);
+  }
+  // Vendedor: pódio + a própria posição (sem expor quem está atrás)
+  const minhaPos = d?.ranking?.posicao;
+  const noPodio = minhaPos && minhaPos <= 3;
+  const meu = minhaPos && !noPodio ? `
+    <section class="cartao lista-rank">
+      <div class="item eu"><span class="pos">${minhaPos}º</span>${avatar(rk.find((r) => r.codigo === eu) || { nome: estado.perfil?.nome }, true)}<span class="quem">Sua posição</span><span>seu resultado: ${pct(d?.pct_meta)}</span></div>
+    </section>` : "";
+  const dica = minhaPos && !noPodio
+    ? `<section class="cartao" style="flex-direction:row;align-items:center;gap:12px">${I.subir}<span style="font-size:14px;font-weight:600;line-height:18px">${minhaPos - 3 === 1 ? "Falta" : "Faltam"} <strong>${minhaPos - 3} ${minhaPos - 3 === 1 ? "posição" : "posições"}</strong> para o pódio. Cada venda conta!</span></section>`
+    : noPodio ? `<section class="cartao" style="flex-direction:row;align-items:center;gap:12px">${I.subir}<span style="font-size:14px;font-weight:600">Você está no pódio! Continue assim.</span></section>` : "";
+  return moldura("ranking", "Ranking do mês", "", `
+    ${podio}
+    ${meu}
+    ${dica}
+    <p class="nota centro" style="margin:0">Aparecem só os 3 primeiros e a sua posição.</p>`);
 }
 
 // ---------------------------------------------------------------------------
@@ -573,7 +603,7 @@ function telaVender() {
   const v = d?.vencendo;
   const meu = v ? `
     <section class="cartao" style="gap:6px">
-      <div class="linha-base"><span class="rotulo">Você vendeu de produtos vencendo</span>${v.posicao ? `<span class="selo">${v.posicao}º de ${v.total}</span>` : ""}</div>
+      <div class="linha-base"><span class="rotulo">Você vendeu de produtos vencendo</span>${posicaoTexto(v.posicao, v.total) ? `<span class="selo">${posicaoTexto(v.posicao, v.total)}</span>` : ""}</div>
       <span class="valor-m">${brl(v.faturamento)}</span>
       <span class="nota" style="font-size:13px">${num(v.itens, 0)} unidades no mês · loja: ${brl(lj.vencendo_loja?.faturamento)}</span>
     </section>` : "";
@@ -600,6 +630,7 @@ function telaVender() {
   const campanha = camp.length ? `
     <section class="cartao lista-prod">
       <h2>Campanha Indicação · prêmio à parte <span class="rotulo">(${camp.length})</span></h2>
+      ${periodoCampanha(true)}
       ${camp.slice(0, estado.verTodosCampanha ? 60 : 10).map((p) => `<div class="prod"><div class="prod-nome">${esc(p.nome)}<span class="nota">${p.preco ? `${brl(p.preco, 2)} · ` : ""}${num(p.estoque, 0)} em estoque${p.vendidos_mes ? ` · ${num(p.vendidos_mes, 0)} vendidos no mês` : ""}</span></div></div>`).join("")}
       ${camp.length > 10 ? `<button class="link" type="button" data-acao="todos-campanha">${estado.verTodosCampanha ? "Mostrar menos" : `Ver todos os ${camp.length}`}</button>` : ""}
     </section>` : "";
@@ -729,7 +760,8 @@ function gestaoVendas(g) {
     </div>` : ""}
     ${ind.length ? `
     <section class="cartao lista-prod">
-      <h2>Campanha Indicação · unidades no mês</h2>
+      <h2>Campanha Indicação · unidades no período</h2>
+      ${periodoCampanha(false)}
       ${ind.map((m) => { const c = m.dados.campanha_indicacao; return `<div class="prod"><div class="prod-nome">${esc(m.nome)}<span class="nota">${brl(c.valor)} vendidos${c.ganho_estimado != null ? ` · ganha ${brl(c.ganho_estimado, 2)}` : ""}</span></div><strong>${num(c.unidades, 0)} un.</strong></div>`; }).join("")}
     </section>` : ""}
     ${camp ? `<section class="cartao lista-prod"><h2>Campanhas · quem já bateu</h2>${camp}</section>` : ""}
