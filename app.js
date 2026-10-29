@@ -10,7 +10,7 @@ const DOMINIO_EMAIL = "vendedor.farmanutri.app";
 const app = document.getElementById("app");
 
 let sb = null; // cliente Supabase
-const estado = { logado: false, gestao: null, gestaoAba: "vendas", verTodosComprar: false, perfil: null, dados: null, ranking: [], equipe: [], loja: null, atualizadoEm: null, erro: null, verTodosVencendo: false,
+const estado = { logado: false, gestao: null, gestaoAba: "vendas", verTodosComprar: false, verTodosCampanha: false, perfil: null, dados: null, ranking: [], equipe: [], loja: null, atualizadoEm: null, erro: null, verTodosVencendo: false,
   chat: [], iaCarregando: false, iaRestantes: null };
 // Gestor (diretoria/gerência) olhando os números de um vendedor: código dele; null = os próprios
 let VER = null;
@@ -107,6 +107,17 @@ const EXEMPLO = {
     },
     ranking: { posicao: 4, total: 6 },
     vencendo: { faturamento: 860.4, lucro: 412.1, itens: 23, posicao: 3, total: 6 },
+    campanha_indicacao: {
+      unidades: 14, valor: 498.6, posicao: 2, participantes: 6, ganho_estimado: 80,
+      semanas: [
+        { inicio: "2026-09-28", fim: "2026-10-04", unidades: 3, valor_unidade: 5, ganho: 15 },
+        { inicio: "2026-10-05", fim: "2026-10-11", unidades: 5, valor_unidade: 7, ganho: 35 },
+        { inicio: "2026-10-12", fim: "2026-10-18", unidades: 4, valor_unidade: 5, ganho: 20 },
+        { inicio: "2026-10-19", fim: "2026-10-25", unidades: 2, valor_unidade: 5, ganho: 10 },
+      ],
+      semana_atual: { inicio: "2026-10-26", fim: "2026-11-01", unidades: 3, valor_unidade: 5, faltam_para_valor_maior: 2, paga_no_proximo_mes: true },
+      top_produtos: [{ codigo: 54176, nome: "CABELOS UNHAS E PELES 500MG C/60 CAPS" }, { codigo: 48935, nome: "OMEGA 3 1000 MG C/120" }],
+    },
     mix: {
       vendas_4sku_001: 37, valor_promocao: 6120, qtd_promocao: 402, pct_promocao: 0.129,
       top_vendido: { codigo: 1, nome: "DIPIRONA MONOIDRATADA 1G 10 COMP", qtd: 182 },
@@ -130,6 +141,12 @@ const EXEMPLO = {
       { codigo: 32, nome: "POMADA PARA ASSADURA 45G", vendas: 31 },
     ],
     oportunidades: [{ codigo: 41, nome: "COLAGENO HIDROLISADO 120 CAPS", rank_lucro: 2, qtd: 9 }],
+    campanha_indicacao: [
+      { codigo: 54176, nome: "CABELOS UNHAS E PELES 500MG C/60 CAPS", estoque: 84, preco: 36.9, vendidos_mes: 334 },
+      { codigo: 48935, nome: "OMEGA 3 1000 MG C/120 KATIGUA", estoque: 52, preco: 37.5, vendidos_mes: 238 },
+      { codigo: 48163, nome: "MAGNESIO DIMALATO 500MG C/60 CAPS", estoque: 61, preco: 34.9, vendidos_mes: 310 },
+    ],
+    campanha_indicacao_regra: { limite_semanal: 4, valor_ate_limite: 5, valor_acima_limite: 7 },
     sazonais: [
       { chave: "este_mes", mes: 10, ano: 2025, itens: [{ codigo: 51, nome: "REPELENTE SPRAY 100ML", posicao: 1 }, { codigo: 52, nome: "PARACETAMOL 750MG 20 COMP", posicao: 2 }] },
       { chave: "proximo_mes", mes: 11, ano: 2025, itens: [{ codigo: 53, nome: "PROTETOR SOLAR FPS 50 200ML", posicao: 1 }] },
@@ -319,7 +336,49 @@ function telaMes() {
         <span class="rotulo">Atendimentos</span>
         <span class="valor-p">${d.hoje.atendimentos}</span>
       </div>
-    </section>`);
+    </section>
+    ${blocoIndicacao(d, false)}`);
+}
+
+// Campanha de indicação (grupo 30): prêmio em dinheiro à parte da premiação.
+// Regra: semana inteira (seg a dom), até 4 unidades R$ 5,00 cada; acima de 4, todas da semana a R$ 7,00.
+// A semana é paga no mês em que termina; vendas canceladas e unidades devolvidas não contam.
+function blocoIndicacao(d, completo) {
+  const c = d?.campanha_indicacao;
+  if (!c) return "";
+  const r = estado.loja?.campanha_indicacao_regra || { limite_semanal: 4, valor_ate_limite: 5, valor_acima_limite: 7 };
+  const sa = c.semana_atual || { unidades: 0, faltam_para_valor_maior: r.limite_semanal + 1, valor_unidade: r.valor_ate_limite };
+  const maior = sa.faltam_para_valor_maior === 0;
+  const barra = Math.min(sa.unidades / (r.limite_semanal + 1), 1) * 100;
+  const semanas = (c.semanas || []).map((w) => `
+    <div class="prod"><div class="prod-nome">${dataCurta(w.inicio)} a ${dataCurta(w.fim)}${w.em_andamento ? ` <span class="selo" style="font-size:11px;padding:0 8px">em andamento</span>` : ""}<span class="nota">${num(w.unidades, 0)} un. × ${brl(w.valor_unidade, 2)}</span></div><strong>${brl(w.ganho, 2)}</strong></div>`).join("");
+  return `
+    <section class="cartao indicacao" style="gap:8px">
+      <div class="linha-base"><h2 style="margin:0">Campanha Indicação</h2><span class="selo verde">prêmio à parte</span></div>
+      <div class="linha" style="align-items:flex-end">
+        <div style="display:flex;flex-direction:column">
+          <span class="rotulo">Você ganha no mês</span>
+          <span class="valor-m verde">${brl(c.ganho_estimado || 0, 2)}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end">
+          <span class="valor-p">${num(c.unidades, 0)} <span class="rotulo">un.</span></span>
+          <span class="nota">${c.posicao ? `${c.posicao}º de ${c.participantes} na equipe` : "no mês"}</span>
+        </div>
+      </div>
+      <div class="mini-cartao" style="gap:6px">
+        <div class="linha-base"><span class="rotulo">Esta semana${sa.inicio ? ` (${dataCurta(sa.inicio)} a ${dataCurta(sa.fim)})` : ""}</span><strong>${num(sa.unidades, 0)} un. · ${brl(sa.valor_unidade, 2)} cada</strong></div>
+        <div class="barra fina"><div class="barra-cheia" style="width:${barra}%;background:${maior ? "var(--verde)" : "var(--azul)"}"></div></div>
+        <span class="nota" style="font-size:13px">${maior
+          ? `Passou de ${r.limite_semanal}: todas as unidades desta semana valem ${brl(r.valor_acima_limite, 2)}.`
+          : `Venda mais <b>${sa.faltam_para_valor_maior}</b> até domingo e todas as unidades da semana passam a valer ${brl(r.valor_acima_limite, 2)}.`}${sa.paga_no_proximo_mes ? " Esta semana termina no mês que vem e entra no pagamento de lá." : ""}</span>
+      </div>
+      ${completo ? `
+        <span class="nota" style="font-size:13px">Regra: até ${r.limite_semanal} unidades na semana, ${brl(r.valor_ate_limite, 2)} cada; acima de ${r.limite_semanal}, ${brl(r.valor_acima_limite, 2)} cada (todas da semana). Conta a semana inteira, de segunda a domingo, e ela é paga no mês em que termina. Vendas canceladas e unidades devolvidas não contam. Valor estimado, sujeito à conferência da gerência.</span>
+        ${semanas ? `<div class="lista-prod" style="padding:0">${semanas}</div>` : ""}
+        ${c.top_produtos?.length ? `<span class="nota" style="font-size:13px">Seus mais vendidos: ${esc(c.top_produtos.map((p) => p.nome).join(", "))}</span>` : ""}`
+        : `<a class="link" href="#/${VER != null ? `v/${VER}/premio` : "premio"}" style="font-size:14px">Ver semanas e regra</a>`}
+      ${!c.unidades ? `<span class="nota" style="font-size:13px">Os produtos da campanha estão na aba Vender.</span>` : ""}
+    </section>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -434,7 +493,8 @@ function telaPremio() {
     <section class="cartao" style="gap:8px">
       <div class="linha"><h2>Bônus por indicadores</h2><span class="valor-p">${brl(bonus.valor)}</span></div>
       <span class="nota" style="font-size:13px">${bonus.pct_total >= 0 ? "+" : ""}${pct(bonus.pct_total)} sobre a base de ${brl(p.base)} · identificação, prateleiras e vencimento +6% cada · pós-venda e Farmácia Popular +12% cada · lucratividade +58% · notas pendentes −5%</span>
-    </section>`);
+    </section>
+    ${blocoIndicacao(d, true)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -536,8 +596,16 @@ function telaVender() {
       ${itens.map((p, i) => `<div class="prod"><div class="prod-nome"><span class="num">${i + 1}</span>${esc(p.nome)}</div>${dir ? `<span class="nota">${dir(p)}</span>` : ""}</div>`).join("")}
     </section>` : "");
   const saz = (lj.sazonais || []).filter((s) => s.itens?.length);
+  const camp = lj.campanha_indicacao || [];
+  const campanha = camp.length ? `
+    <section class="cartao lista-prod">
+      <h2>Campanha Indicação · prêmio à parte <span class="rotulo">(${camp.length})</span></h2>
+      ${camp.slice(0, estado.verTodosCampanha ? 60 : 10).map((p) => `<div class="prod"><div class="prod-nome">${esc(p.nome)}<span class="nota">${p.preco ? `${brl(p.preco, 2)} · ` : ""}${num(p.estoque, 0)} em estoque${p.vendidos_mes ? ` · ${num(p.vendidos_mes, 0)} vendidos no mês` : ""}</span></div></div>`).join("")}
+      ${camp.length > 10 ? `<button class="link" type="button" data-acao="todos-campanha">${estado.verTodosCampanha ? "Mostrar menos" : `Ver todos os ${camp.length}`}</button>` : ""}
+    </section>` : "";
   return moldura("vender", "Vender", "O que oferecer hoje", `
     ${meu}
+    ${campanha}
     ${vencendo}
     ${simples(`Em promoção hoje <span class="rotulo">(${(lj.promocoes || []).length})</span>`, lj.promocoes, (p) => (p.termino ? `até ${dataCurta(p.termino)}` : ""))}
     ${simples("Leve junto · mais vendidos com as promoções", lj.arrasto, (p) => `${p.vendas} vendas`)}
@@ -631,22 +699,61 @@ function gestaoVendas(g) {
     const bateram = eq.filter((m) => m.dados.campanhas[chave]?.ok);
     return `<div class="prod"><div class="prod-nome">${esc(c.nome)}<span class="nota">meta ${c.meta.toLocaleString("pt-BR")} · ${bateram.length ? esc(bateram.map((m) => m.nome).join(", ")) : "ninguém ainda"}</span></div><span class="selo${bateram.length ? " verde" : ""}">${bateram.length}/${eq.length}</span></div>`;
   }).join("") : "";
+  const dias = v.dias;
+  const fp = g.formas_pagamento?.mes || [];
+  const cl = g.clientes;
+  const sup = (g.premio_supervisor || []);
+  const ind = estado.equipe.filter((m) => m.dados?.campanha_indicacao?.unidades).sort((a, b) => b.dados.campanha_indicacao.unidades - a.dados.campanha_indicacao.unidades);
+  const DIAS_ROT = { segunda: "Seg", "terça": "Ter", quarta: "Qua", quinta: "Qui", sexta: "Sex", "sábado": "Sáb", domingo: "Dom" };
+  const medias = dias?.media_por_dia_da_semana_8_semanas || {};
+  const maxMedia = Math.max(1, ...Object.values(medias));
   return `
     ${cartaoVendaLoja(v.total, mg["Total da rede"], true)}
     <p class="nota" style="margin:-4px 4px 0">${esc(v.regra_meta || "")}. A marca na barra é onde a loja deveria estar hoje.</p>
     ${v.lojas.map((l) => cartaoVendaLoja(l, mg[l.loja])).join("")}
-    ${camp ? `<section class="cartao lista-prod"><h2>Campanhas · quem já bateu</h2>${camp}</section>` : ""}`;
+    ${dias && Object.keys(medias).length ? `
+    <section class="cartao" style="gap:8px">
+      <h2>Venda média por dia da semana <span class="rotulo">(8 semanas)</span></h2>
+      <div class="semana">${Object.entries(medias).map(([dia, val]) => `<div class="${dia === dias.melhor_dia_da_semana ? "melhor" : dia === dias.pior_dia_da_semana ? "pior" : ""}"><span style="height:${Math.max(6, (val / maxMedia) * 64)}px"></span><small>${DIAS_ROT[dia] || dia}</small></div>`).join("")}</div>
+      <span class="nota" style="font-size:13px">Melhor: <b>${esc(dias.melhor_dia_da_semana || "–")}</b> · mais fraco: <b>${esc(dias.pior_dia_da_semana || "–")}</b> · ritmo dos últimos 30 dias ${brl(dias.ritmo_diario_30d)}/dia${dias.melhor_dia ? ` · melhor dia do mês ${dataCurta(dias.melhor_dia.data)} (${brl(dias.melhor_dia.valor)})` : ""}</span>
+    </section>` : ""}
+    ${fp.length ? `
+    <section class="cartao lista-prod">
+      <h2>Formas de pagamento no mês</h2>
+      ${fp.map((x) => `<div class="prod"><div class="prod-nome">${esc(x.forma)}<div class="barra fina" style="margin-top:4px;width:100%;min-width:150px"><div class="barra-cheia" style="width:${(x.participacao || 0) * 100}%"></div></div></div><span style="text-align:right"><strong>${pct(x.participacao)}</strong><br><span class="nota">${brl(x.valor)}</span></span></div>`).join("")}
+    </section>` : ""}
+    ${cl ? `
+    <div class="grade-2">
+      <section class="cartao"><span class="rotulo">Clientes identificados no mês</span><span class="valor-m">${num(cl.mes.clientes, 0)}</span></section>
+      <section class="cartao"><span class="rotulo">Voltaram a comprar</span><span class="valor-m">${pct(cl.mes.taxa_recompra)}</span><span class="nota">90 dias: ${pct(cl.ultimos_90_dias.taxa_recompra)}</span></section>
+    </div>` : ""}
+    ${ind.length ? `
+    <section class="cartao lista-prod">
+      <h2>Campanha Indicação · unidades no mês</h2>
+      ${ind.map((m) => { const c = m.dados.campanha_indicacao; return `<div class="prod"><div class="prod-nome">${esc(m.nome)}<span class="nota">${brl(c.valor)} vendidos${c.ganho_estimado != null ? ` · ganha ${brl(c.ganho_estimado, 2)}` : ""}</span></div><strong>${num(c.unidades, 0)} un.</strong></div>`; }).join("")}
+    </section>` : ""}
+    ${camp ? `<section class="cartao lista-prod"><h2>Campanhas · quem já bateu</h2>${camp}</section>` : ""}
+    ${sup.length ? `
+    <section class="cartao lista-prod">
+      <h2>Premiação de supervisor <span class="rotulo">(0,5% do lucro se bater a meta)</span></h2>
+      ${sup.map((x) => `<div class="prod"><div class="prod-nome">${esc(x.loja)}<span class="nota">${x.bateu_meta ? "meta batida" : `se bater a meta: ~${brl(x.premio_se_bater)}`}</span></div><strong class="${x.bateu_meta ? "verde" : ""}">${brl(x.premio_estimado)}</strong></div>`).join("")}
+    </section>` : ""}`;
 }
 
 function gestaoEstoque(g) {
   const e = g.estoque;
   if (!e) return `<section class="cartao"><p style="margin:0;font-weight:600">O estoque aparece depois que o sincronizador tiver acesso às tabelas de estoque.</p></section>`;
   const comprar = estado.verTodosComprar ? e.comprar : (e.comprar || []).slice(0, 8);
+  const ei = g.estoque_indicadores;
   return `
     <div class="grade-2">
-      <section class="cartao"><span class="rotulo">Estoque a custo</span><span class="valor-m">${brl(e.valor_custo_total)}</span></section>
+      <section class="cartao"><span class="rotulo">Estoque a custo</span><span class="valor-m">${brl(e.valor_custo_total)}</span>${ei?.giro_estoque_mes != null ? `<span class="nota">giro no mês ${num(ei.giro_estoque_mes, 2)}×</span>` : ""}</section>
       <section class="cartao"><span class="rotulo">Parado +90 dias</span><span class="valor-m">${brl(e.parados_valor_total)}</span><span class="nota">${pct(e.valor_custo_total ? e.parados_valor_total / e.valor_custo_total : null, 1)} do estoque</span></section>
     </div>
+    ${ei ? `<section class="cartao" style="flex-direction:row;justify-content:space-between;gap:8px">
+      <div style="display:flex;flex-direction:column"><span class="rotulo">Ruptura</span><span class="valor-p">${pct(ei.pct_ruptura_sobre_skus_ativos, 1)}</span><span class="nota">${num(ei.produtos_em_ruptura_ativa, 0)} produtos ativos em falta</span></div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end"><span class="rotulo">Perdido em faltas já resolvidas</span><span class="valor-p">${brl(ei.venda_perdida_rupturas_finalizadas_mes)}</span><span class="nota">neste mês (estimado)</span></div>
+    </section>` : ""}
     <section class="cartao lista-prod">
       <h2>Por loja</h2>
       ${(e.lojas || []).map((l) => `<div class="prod"><div class="prod-nome">${esc(l.loja)}<span class="nota">${qtd(l.produtos_com_saldo)} produtos · cobertura ${l.cobertura_dias ?? "–"} dias${l.zerados_que_venderam_30d ? ` · ${l.zerados_que_venderam_30d} zerados que vendem` : ""}</span></div><strong>${brl(l.valor_custo)}</strong></div>`).join("")}
@@ -667,6 +774,50 @@ function gestaoEstoque(g) {
       <h2>Parados · sem venda há mais de 90 dias</h2>
       ${e.parados.slice(0, 10).map((p) => `<div class="prod"><div class="prod-nome">${esc(p.nome)}<span class="nota">${esc(p.loja)} · ${qtd(p.saldo)} un. · ${p.dias_sem_venda != null ? `${p.dias_sem_venda} dias sem venda` : "sem venda registrada"}</span></div><strong>${brl(p.valor_custo)}</strong></div>`).join("")}
     </section>` : ""}`;
+}
+
+function gestaoFinanceiro(g) {
+  const f = g.financeiro;
+  if (!f) return `<section class="cartao"><p style="margin:0;font-weight:600">Os números financeiros aparecem quando o sincronizador tiver acesso às contas a pagar e a receber.</p></section>`;
+  const ap = f.a_pagar_fornecedores;
+  const corEnd = f.endividamento_situacao === "saudável" ? "var(--verde)" : f.endividamento_situacao === "atenção" ? "var(--ouro)" : "#A15C00";
+  const fl = f.fluxo_de_caixa_projetado || {};
+  return `
+    <section class="cartao" style="gap:6px">
+      <div class="linha-base"><span class="rotulo">A pagar a fornecedores · próximos 30 dias</span>${f.endividamento_situacao ? `<span class="selo" style="background:${corEnd};color:#fff">${esc(f.endividamento_situacao)}</span>` : ""}</div>
+      <span class="valor-g">${brl(ap["30_dias"])}</span>
+      <div class="comparar">
+        <div><span class="rotulo">7 dias</span>${brl(ap["7_dias"])}</div>
+        <div><span class="rotulo">60 dias</span>${brl(ap["60_dias"])}</div>
+        <div><span class="rotulo">90 dias</span>${brl(ap["90_dias"])}</div>
+      </div>
+      <span class="nota" style="font-size:13px">Endividamento 45 dias: <b>${pct(f.indice_endividamento_45d)}</b> do faturamento (${brl(ap["45_dias"])} a pagar ÷ ${brl(f.faturamento_45d)} vendidos). Até 30% é saudável; acima de 50% é alto.</span>
+    </section>
+    <section class="cartao lista-prod">
+      <h2>Fluxo de caixa projetado</h2>
+      ${["30", "60", "90"].map((n) => { const x = fl[`${n}_dias`] || {}; return `<div class="prod"><div class="prod-nome">Próximos ${n} dias<span class="nota">entra ~${brl(x.entrada_projetada)} · sai ${brl(x.a_pagar_fornecedores)} (fornecedores)</span></div><strong class="${(x.saldo_projetado || 0) >= 0 ? "sobe" : "cai"}">${brl(x.saldo_projetado)}</strong></div>`; }).join("")}
+      <p class="nota" style="margin:6px 0 0">Entrada = ritmo de venda dos últimos 30 dias. Não inclui despesas fixas nem impostos.</p>
+    </section>
+    <div class="grade-2">
+      <section class="cartao"><span class="rotulo">Prazo médio pagar</span><span class="valor-m">${f.prazo_medio_pagamento_dias ?? "–"} d</span><span class="nota">receber: ${f.a_receber?.prazo_medio_recebimento_dias ?? "–"} d</span></section>
+      <section class="cartao"><span class="rotulo">Ciclo de caixa</span><span class="valor-m">${f.ciclo_de_caixa_dias ?? "–"} d</span><span class="nota">estoque + receber − pagar</span></section>
+    </div>
+    ${f.vencer_7_dias?.length ? `
+    <section class="cartao lista-prod">
+      <h2>Vencem nos próximos 7 dias</h2>
+      ${f.vencer_7_dias.map((x) => `<div class="prod"><div class="prod-nome">${esc(x.credor)}<span class="nota">vence ${dataCurta(x.vencimento)}</span></div><strong>${brl(x.valor)}</strong></div>`).join("")}
+    </section>` : ""}
+    ${f.top5_fornecedores?.length ? `
+    <section class="cartao lista-prod">
+      <h2>Maiores saldos com fornecedores <span class="rotulo">(top 5 = ${pct(f.concentracao_top5)} do total)</span></h2>
+      ${f.top5_fornecedores.map((x) => `<div class="prod"><div class="prod-nome">${esc(x.credor)}</div><strong>${brl(x.em_aberto)}</strong></div>`).join("")}
+    </section>` : ""}
+    <section class="cartao lista-prod">
+      <h2>Atenção</h2>
+      <div class="prod"><div class="prod-nome">Títulos vencidos em aberto<span class="nota">${f.vencidas.titulos} títulos · confira se não há pagos sem baixa no sistema</span></div><strong>${brl(f.vencidas.valor)}</strong></div>
+      ${f.juros_multa_pagos ? `<div class="prod"><div class="prod-nome">Juros e multas pagos<span class="nota">últimos 90 dias: ${brl(f.juros_multa_pagos.ultimos_90_dias)}</span></div><strong>${brl(f.juros_multa_pagos.mes)}</strong></div>` : ""}
+      ${f.a_receber ? `<div class="prod"><div class="prod-nome">A receber de clientes<span class="nota">vencido: ${brl(f.a_receber.vencido)}</span></div><strong>${brl(f.a_receber.total)}</strong></div>` : ""}
+    </section>`;
 }
 
 function gestaoAlertas(g) {
@@ -700,9 +851,9 @@ function gestaoAlertas(g) {
 function telaGestao() {
   const g = estado.gestao;
   if (!g) return moldura("gestao", "Gestão", "", `<section class="cartao"><p style="margin:0;font-weight:600">Os números de gestão aparecem depois da próxima sincronização (o sincronizador precisa estar atualizado e a tabela "gestao" criada no banco).</p></section>`);
-  const abas = [["vendas", "Vendas"], ["estoque", "Estoque"], ["alertas", "Alertas"]];
+  const abas = [["vendas", "Vendas"], ["estoque", "Estoque"], ["financeiro", "Caixa"], ["alertas", "Alertas"]];
   const qtdAlertas = (g.notas_pendentes?.total || 0) + (g.rupturas?.maiores?.filter((x) => x.curva === "A").length || 0);
-  const corpo = { vendas: gestaoVendas, estoque: gestaoEstoque, alertas: gestaoAlertas }[estado.gestaoAba] || gestaoVendas;
+  const corpo = { vendas: gestaoVendas, estoque: gestaoEstoque, financeiro: gestaoFinanceiro, alertas: gestaoAlertas }[estado.gestaoAba] || gestaoVendas;
   return moldura("gestao", "Gestão", "Todas as lojas", `
     <div class="segmentos" role="group" aria-label="Assunto">
       ${abas.map(([id, rot]) => `<button type="button" data-gestao-aba="${id}" aria-pressed="${estado.gestaoAba === id}">${rot}${id === "alertas" && qtdAlertas ? ` <span class="contador">${qtdAlertas}</span>` : ""}</button>`).join("")}
@@ -805,6 +956,7 @@ function equipeExemplo() {
       ...base, faturamento: Math.round(base.meta * p), pct_meta: p, pct_projecao: p * 1.2, projecao: Math.round(base.meta * p * 1.2),
       hoje: { faturamento: 600 + i * 150, atendimentos: 10 + i },
       premiacao: { ...base.premiacao, liberada: lib, valor_hoje: lib ? 900 - i * 120 : 0, condicoes: { faixa_70: p > 0.7, lucratividade: true, identificacao: lib } },
+      campanha_indicacao: { unidades: 20 - i * 3, valor: (20 - i * 3) * 35, posicao: i + 1, participantes: 6, ganho_estimado: (20 - i * 3) * (i < 2 ? 7 : 5), top_produtos: [] },
       campanhas: {
         genericos_similares: { nome: "Genéricos e similares (R$)", realizado: 5200 - i * 700, meta: 4500, ok: 5200 - i * 700 >= 4500 },
         perfumaria: { nome: "Perfumaria (R$)", realizado: 2900 - i * 500, meta: 2500, ok: 2900 - i * 500 >= 2500 },
@@ -974,8 +1126,9 @@ app.addEventListener("click", async (e) => {
   }
   const seg = e.target.closest("[data-gestao-aba]");
   if (seg) { estado.gestaoAba = seg.dataset.gestaoAba; render(); return; }
-  if (e.target.closest("[data-acao=todos-comprar]")) {
-    estado.verTodosComprar = !estado.verTodosComprar;
+  if (e.target.closest("[data-acao=todos-comprar], [data-acao=todos-campanha]")) {
+    if (e.target.closest("[data-acao=todos-campanha]")) estado.verTodosCampanha = !estado.verTodosCampanha;
+    else estado.verTodosComprar = !estado.verTodosComprar;
     const y = window.scrollY;
     render();
     window.scrollTo(0, y);
