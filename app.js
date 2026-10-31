@@ -10,7 +10,7 @@ const DOMINIO_EMAIL = "vendedor.farmanutri.app";
 const app = document.getElementById("app");
 
 let sb = null; // cliente Supabase
-const estado = { logado: false, gestao: null, gestaoAba: "vendas", verTodosComprar: false, verTodosCampanha: false, perfil: null, dados: null, ranking: [], equipe: [], loja: null, atualizadoEm: null, erro: null, verTodosVencendo: false,
+const estado = { logado: false, gestao: null, gestaoAba: "vendas", verTodosComprar: false, verTodosCampanha: false, verTodosSug: false, perfil: null, dados: null, ranking: [], equipe: [], loja: null, atualizadoEm: null, erro: null, verTodosVencendo: false,
   chat: [], iaCarregando: false, iaRestantes: null };
 // Gestor (diretoria/gerência) olhando os números de um vendedor: código dele; null = os próprios
 let VER = null;
@@ -106,6 +106,11 @@ const EXEMPLO = {
       ritmo: { faixa: 90, valor: 1300 },
     },
     ranking: { posicao: 4, total: 6 },
+    sugestoes: [
+      { origem: "cadastro", produto: "INFRALAX C/30", sugestao: "MAGNESIO DIMALATO 500MG C/60", preco: 34.9, conversao_equipe: 0.13, minha_conversao: 0.05, vendas_produto: 22 },
+      { origem: "cadastro", produto: "FINASTERIDA 1MG C/30", sugestao: "MINOXIDIL SPRAY 50ML", preco: 59.9, conversao_equipe: 0.21, minha_conversao: 0.08, vendas_produto: 12 },
+      { origem: "clientes", produto: "FRALDA INFANTIL G 30UN", sugestao: "LENCO UMEDECIDO 50UN", preco: 12.9, conversao_equipe: 0.18, minha_conversao: null, vendas_produto: 140 },
+    ],
     vencendo: { faturamento: 860.4, lucro: 412.1, itens: 23, posicao: 3, total: 6 },
     campanha_indicacao: {
       unidades: 14, valor: 498.6, posicao: 2, participantes: 6, ganho_estimado: 80,
@@ -634,8 +639,20 @@ function telaVender() {
       ${camp.slice(0, estado.verTodosCampanha ? 60 : 10).map((p) => `<div class="prod"><div class="prod-nome">${esc(p.nome)}<span class="nota">${p.preco ? `${brl(p.preco, 2)} · ` : ""}${num(p.estoque, 0)} em estoque${p.vendidos_mes ? ` · ${num(p.vendidos_mes, 0)} vendidos no mês` : ""}</span></div></div>`).join("")}
       ${camp.length > 10 ? `<button class="link" type="button" data-acao="todos-campanha">${estado.verTodosCampanha ? "Mostrar menos" : `Ver todos os ${camp.length}`}</button>` : ""}
     </section>` : "";
+  const sugs = d?.sugestoes || [];
+  const vendaJunto = sugs.length ? `
+    <section class="cartao lista-prod junto">
+      <h2>Venda junto · aumente seu ticket</h2>
+      <p class="nota" style="margin:0 0 4px">Nos produtos que você mais vende, clientes costumam levar também:</p>
+      ${sugs.map((o) => `
+        <div class="prod"><div class="prod-nome"><span>Vendeu <b>${esc(o.produto)}</b>? Ofereça <b class="azul">${esc(o.sugestao)}</b>${o.preco ? ` <span class="nota">· ${brl(o.preco, 2)}</span>` : ""}</span>
+          <span class="nota">${o.minha_conversao != null
+            ? `A equipe agrega em ${pct(o.conversao_equipe)} das vendas; você em ${pct(o.minha_conversao)}`
+            : `${pct(o.conversao_equipe)} dos clientes que levam ${esc(o.produto)} levam também`}${o.origem === "cadastro" ? " · sugestão do sistema" : ""}</span></div></div>`).join("")}
+    </section>` : "";
   return moldura("vender", "Vender", "O que oferecer hoje", `
     ${meu}
+    ${vendaJunto}
     ${campanha}
     ${vencendo}
     ${simples(`Em promoção hoje <span class="rotulo">(${(lj.promocoes || []).length})</span>`, lj.promocoes, (p) => (p.termino ? `até ${dataCurta(p.termino)}` : ""))}
@@ -765,10 +782,40 @@ function gestaoVendas(g) {
       ${ind.map((m) => { const c = m.dados.campanha_indicacao; return `<div class="prod"><div class="prod-nome">${esc(m.nome)}<span class="nota">${brl(c.valor)} vendidos${c.ganho_estimado != null ? ` · ganha ${brl(c.ganho_estimado, 2)}` : ""}</span></div><strong>${num(c.unidades, 0)} un.</strong></div>`; }).join("")}
     </section>` : ""}
     ${camp ? `<section class="cartao lista-prod"><h2>Campanhas · quem já bateu</h2>${camp}</section>` : ""}
+    ${blocoSugestaoGestao(g.sugestao_venda)}
     ${sup.length ? `
     <section class="cartao lista-prod">
       <h2>Premiação de supervisor <span class="rotulo">(0,5% do lucro se bater a meta)</span></h2>
       ${sup.map((x) => `<div class="prod"><div class="prod-nome">${esc(x.loja)}<span class="nota">${x.bateu_meta ? "meta batida" : `se bater a meta: ~${brl(x.premio_se_bater)}`}</span></div><strong class="${x.bateu_meta ? "verde" : ""}">${brl(x.premio_estimado)}</strong></div>`).join("")}
+    </section>` : ""}`;
+}
+
+function blocoSugestaoGestao(sv) {
+  if (!sv) return "";
+  const lin = (p, dir) => `<div class="prod"><div class="prod-nome">${esc(p.produto.nome)} → <b>${esc(p.sugestao.nome)}</b><span class="nota">${dir}</span></div><strong>${pct(p.conversao, 1)}</strong></div>`;
+  const vend = (sv.vendedores || []);
+  return `
+    <section class="cartao lista-prod">
+      <h2>Sugestão de venda <span class="rotulo">(${sv.pares_cadastrados} pares no Automatiza)</span></h2>
+      <p class="nota" style="margin:0 0 4px">Conversão geral: <b>${pct(sv.conversao_geral, 1)}</b> — das vendas com o produto, em quantas o cliente levou a sugestão (90 dias, sem canceladas).</p>
+      ${(sv.pares || []).slice(0, estado.verTodosSug ? 60 : 6).map((p) => lin(p, `${num(p.vendas_produto, 0)} vendas · ${num(p.levaram_sugestao, 0)} levaram${p.sem_estoque ? " · <b class='cai'>sugestão sem estoque</b>" : ""}${p.sem_preco ? " · <b class='cai'>sem preço</b>" : ""}${p.melhores?.length ? ` · melhor: ${esc(p.melhores[0].nome)} (${pct(p.melhores[0].conversao)})` : ""}`)).join("")}
+      ${(sv.pares || []).length > 6 ? `<button class="link" type="button" data-acao="todos-sug">${estado.verTodosSug ? "Mostrar menos" : `Ver os ${sv.pares.length} pares`}</button>` : ""}
+    </section>
+    ${vend.length ? `
+    <section class="cartao lista-prod">
+      <h2>Quem aproveita a sugestão</h2>
+      ${vend.map((v) => `<div class="prod"><div class="prod-nome">${esc(v.nome)}<span class="nota">${num(v.levaram_sugestao, 0)} de ${num(v.vendas_produto, 0)} vendas</span></div><strong>${pct(v.conversao, 1)}</strong></div>`).join("")}
+    </section>` : ""}
+    ${(sv.sem_estoque_ou_preco || []).length ? `
+    <section class="cartao lista-prod">
+      <h2>Corrigir no cadastro <span class="rotulo">(sugestão aparece no caixa sem estoque ou sem preço)</span></h2>
+      ${sv.sem_estoque_ou_preco.map((p) => `<div class="prod"><div class="prod-nome">${esc(p.sugestao.nome)}<span class="nota">sugerido para ${esc(p.produto.nome)}</span></div><span class="vence urgente">${p.sem_estoque && p.sem_preco ? "sem estoque e preço" : p.sem_estoque ? "sem estoque" : "sem preço"}</span></div>`).join("")}
+    </section>` : ""}
+    ${(sv.novos_pares || []).length ? `
+    <section class="cartao lista-prod">
+      <h2>Novas sugestões para cadastrar</h2>
+      <p class="nota" style="margin:0 0 4px">Clientes já levam juntos, mas não está cadastrado no Automatiza. Medicamentos de receita/controlados ficam de fora.</p>
+      ${sv.novos_pares.slice(0, 12).map((n) => `<div class="prod"><div class="prod-nome">${esc(n.produto.nome)} → <b>${esc(n.sugestao.nome)}</b><span class="nota">juntos em ${num(n.vendas_juntos, 0)} vendas${n.lucro_unitario ? ` · lucro ${brl(n.lucro_unitario, 2)}/un.` : ""}</span></div><strong>${pct(n.conversao)}</strong></div>`).join("")}
     </section>` : ""}`;
 }
 
@@ -1158,8 +1205,9 @@ app.addEventListener("click", async (e) => {
   }
   const seg = e.target.closest("[data-gestao-aba]");
   if (seg) { estado.gestaoAba = seg.dataset.gestaoAba; render(); return; }
-  if (e.target.closest("[data-acao=todos-comprar], [data-acao=todos-campanha]")) {
+  if (e.target.closest("[data-acao=todos-comprar], [data-acao=todos-campanha], [data-acao=todos-sug]")) {
     if (e.target.closest("[data-acao=todos-campanha]")) estado.verTodosCampanha = !estado.verTodosCampanha;
+    else if (e.target.closest("[data-acao=todos-sug]")) estado.verTodosSug = !estado.verTodosSug;
     else estado.verTodosComprar = !estado.verTodosComprar;
     const y = window.scrollY;
     render();
