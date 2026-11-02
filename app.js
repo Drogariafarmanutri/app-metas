@@ -10,7 +10,7 @@ const DOMINIO_EMAIL = "vendedor.farmanutri.app";
 const app = document.getElementById("app");
 
 let sb = null; // cliente Supabase
-const estado = { logado: false, gestao: null, gestaoAba: "vendas", verTodosComprar: false, verTodosCampanha: false, verTodosSug: false, perfil: null, dados: null, ranking: [], equipe: [], loja: null, atualizadoEm: null, erro: null, verTodosVencendo: false,
+const estado = { logado: false, anterior: false, snapAtual: null, snapAnterior: null, gestao: null, gestaoAba: "vendas", verTodosComprar: false, verTodosCampanha: false, verTodosSug: false, perfil: null, dados: null, ranking: [], equipe: [], loja: null, atualizadoEm: null, erro: null, verTodosVencendo: false,
   chat: [], iaCarregando: false, iaRestantes: null };
 // Gestor (diretoria/gerência) olhando os números de um vendedor: código dele; null = os próprios
 let VER = null;
@@ -197,6 +197,7 @@ async function carregarDados() {
       equipe: gestor ? equipeExemplo() : [],
       gestao: gestor ? (await import("./exemplo-gestao.js")).default : null,
     });
+    await fecharCarga();
     return;
   }
   // "gestor" só existe depois da atualização do banco; sem ela, segue como vendedor
@@ -239,6 +240,76 @@ async function carregarDados() {
     : [];
   estado.ranking = rk || [];
   estado.atualizadoEm = sinc?.atualizado_em || ind?.atualizado_em || null;
+  await fecharCarga();
+}
+
+// ---------------------------------------------------------------------------
+// Mês atual x mês anterior (fechado)
+// ---------------------------------------------------------------------------
+const CAMPOS_PERIODO = ["dados", "ranking", "equipe", "gestao", "atualizadoEm"];
+const foto = (rk, cod) => (rk || []).find((r) => r.codigo === cod)?.foto || null;
+
+// guarda o mês atual recém-carregado e, se o usuário está vendo o mês anterior, reaplica
+async function fecharCarga() {
+  estado.snapAtual = Object.fromEntries(CAMPOS_PERIODO.map((k) => [k, estado[k]]));
+  if (estado.anterior) {
+    try { estado.snapAnterior = await carregarAnterior(); } catch (ex) { console.warn("Mês anterior", ex); }
+    if (estado.snapAnterior) Object.assign(estado, estado.snapAnterior);
+  }
+}
+
+async function carregarAnterior() {
+  const gestor = !!estado.perfil?.gestor;
+  if (DEMO) {
+    const dd = (x, f) => (x ? { ...x, mesano: "2026-09", mes_fechado: true, faturamento: Math.round(x.faturamento * f), pct_meta: x.pct_meta * f, hoje: { faturamento: 0, atendimentos: 0 } } : null);
+    return {
+      dados: dd(EXEMPLO.dados, 1.18),
+      ranking: EXEMPLO.ranking.map((r, i) => ({ ...r, posicao: [2, 1, 4, 3, 6, 5][i] })).sort((a, b) => a.posicao - b.posicao),
+      equipe: (estado.snapAtual?.equipe || []).map((m) => ({ ...m, dados: dd(m.dados, 1.1) })),
+      gestao: gestor ? { mes: "09/2026", mes_fechado: true, vendas: (await import("./exemplo-gestao.js")).default.vendas, margem: (await import("./exemplo-gestao.js")).default.margem } : null,
+      atualizadoEm: new Date().toISOString(),
+    };
+  }
+  const p = estado.perfil;
+  const [{ data: inds }, { data: rk }, gs] = await Promise.all([
+    p.gestor ? sb.from("indicadores_anterior").select("codigo,mesano,dados,atualizado_em")
+      : sb.from("indicadores_anterior").select("codigo,mesano,dados,atualizado_em").eq("codigo", p.codigo),
+    sb.from("ranking_anterior").select("*").order("posicao"),
+    p.gestor ? sb.from("gestao").select("dados,atualizado_em").eq("id", 2).maybeSingle().then((r) => r, () => ({ data: null })) : Promise.resolve({ data: null }),
+  ]);
+  const comMes = (x) => (x ? { ...x.dados, mesano: x.mesano } : null);
+  const ind = (inds || []).find((x) => x.codigo === p.codigo);
+  return {
+    dados: comMes(ind),
+    ranking: rk || [],
+    equipe: p.gestor ? (estado.snapAtual?.equipe || []).map((m) => ({ ...m, foto: foto(rk, m.codigo) || m.foto, dados: comMes((inds || []).find((x) => x.codigo === m.codigo)) })) : [],
+    gestao: gs?.data?.dados ? { ...gs.data.dados, atualizado_em: gs.data.atualizado_em } : null,
+    atualizadoEm: ind?.atualizado_em || gs?.data?.atualizado_em || null,
+  };
+}
+
+async function trocarMes() {
+  estado.anterior = !estado.anterior;
+  if (estado.anterior) {
+    app.querySelector("#conteudo")?.insertAdjacentHTML("afterbegin", `<p class="nota centro">Carregando o mês anterior…</p>`);
+    try { estado.snapAnterior = await carregarAnterior(); } catch (ex) { console.warn(ex); estado.snapAnterior = null; }
+    Object.assign(estado, estado.snapAnterior || { dados: null, ranking: [], equipe: [], gestao: null });
+  } else if (estado.snapAtual) {
+    Object.assign(estado, estado.snapAtual);
+  }
+  render();
+}
+
+// sincronização parada? (só a gestão vê o aviso; horário de funcionamento do agendador 7h-22h)
+function avisoSincronizacao() {
+  if (!estado.perfil?.gestor || estado.anterior || DEMO) return "";
+  const t = estado.snapAtual?.atualizadoEm;
+  if (!t) return "";
+  const min = (Date.now() - new Date(t).getTime()) / 60000;
+  const h = new Date().getHours();
+  if (min < 60 || h < 8 || h >= 22) return "";
+  const quando = new Date(t).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return `<div class="alerta" style="margin:0 0 4px">${I.alerta}<div><strong>Sincronização parada</strong><span>A última atualização foi em ${quando}. Confira o agendador no SV-MATRIZ (sincronizador.log).</span></div></div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -265,7 +336,7 @@ function moldura(aba, titulo, subtitulo, corpo) {
       <div class="topo-linha">
         <div class="marca"><img class="simbolo" src="icones/simbolo-64.png" alt="" width="26" height="26"><span>FARMANUTRI</span></div>
         <div class="topo-linha">
-          <span class="topo-mes">${esc(nomeMes(d?.mesano))}</span>
+          <button type="button" class="topo-mes" data-acao="trocar-mes" aria-label="${estado.anterior ? "Voltar ao mês atual" : "Ver o mês anterior"}">${esc(nomeMes(d?.mesano))} <span aria-hidden="true">⇄</span></button>
           <button class="sair" data-acao="sair" type="button">Sair</button>
         </div>
       </div>
@@ -273,7 +344,10 @@ function moldura(aba, titulo, subtitulo, corpo) {
       <h1>${titulo}</h1>
     </header>
     ${vendo ? `<a class="vendo" href="#/equipe">${I.voltar}<span>Vendo <strong>${esc(vendo.nome)}</strong> · voltar para a equipe</span></a>` : ""}
+    ${estado.anterior ? `<button type="button" class="faixa-anterior" data-acao="trocar-mes">${I.relogioP}<span>Mês fechado: <b>${esc(nomeMes(d?.mesano) || "mês anterior")}</b> · toque para voltar ao mês atual</span></button>`
+      : `<button type="button" class="link-anterior" data-acao="trocar-mes">Ver resultados do mês anterior</button>`}
     <main id="conteudo" tabindex="-1">
+      ${avisoSincronizacao()}
       ${corpo}
       ${estado.atualizadoEm ? `<p class="nota centro">Atualizado às ${hora(estado.atualizadoEm)} · dados do Automatiza</p>` : ""}
     </main>
@@ -305,14 +379,22 @@ function telaMes() {
   const escala = d.meta * 1.1;
   const largura = Math.min(d.faturamento / escala, 1) * 100;
   const marcas = d.faixas.map((f) => `<div class="barra-marca" style="left:calc(${(f.valor / escala) * 100}% - 1px)"></div>`).join("");
-  const faixas = d.faixas.map((f) => {
-    const ehProx = prox && f.faixa === prox.faixa;
+  const faixas = d.faixas.map((f0) => {
+    const f = { ...f0, atingida: f0.atingida || d.faturamento > f0.valor };
+    const ehProx = prox && f.faixa === prox.faixa && !f.atingida;
     const icone = f.atingida ? I.ok : ehProx ? I.relogio : f.faixa === "super" ? I.estrela : I.vazio;
     const dir = f.atingida ? "<b>Atingida</b>" : `<b>faltam ${brl(f.valor - d.faturamento)}</b>`;
     return `<div class="faixa ${f.atingida ? "ok" : ""} ${ehProx ? "proxima" : ""}"><span>${icone}${nomeFaixa(f.faixa)} · ${brl(f.valor)}</span><span>${dir}</span></div>`;
   }).join("");
   const metaHoje = d.meta_hoje || 0;
-  return moldura("mes", titulo, `Olá, ${primeiroNome}`, `
+  const fechado = estado.anterior || d.mes_fechado;
+  const blocoDia = fechado ? `
+    <section class="cartao" style="gap:4px">
+      <span class="rotulo">Resultado final do mês</span>
+      <span class="valor-m ${d.pct_meta >= 1 ? "verde" : ""}">${pct(d.pct_meta)} da meta</span>
+      <span class="nota">${brl(d.faturamento)} vendidos · meta ${brl(d.meta)}</span>
+    </section>` : null;
+  return moldura("mes", fechado ? (d.supermeta ? "Supermeta batida!" : d.pct_meta >= 1 ? "Meta batida!" : "Mês encerrado") : titulo, `Olá, ${primeiroNome}`, `
     <section class="cartao">
       <div class="linha-base"><span class="rotulo">Vendido no mês</span><span class="rotulo">Meta ${brl(d.meta)}</span></div>
       <div style="display:flex;align-items:baseline;gap:8px"><span class="valor-g">${brl(d.faturamento)}</span><span class="valor-p azul" style="font-size:16px">${pct(d.pct_meta)}</span></div>
@@ -321,7 +403,7 @@ function telaMes() {
       </div>
       <div class="faixas">${faixas}</div>
     </section>
-    <div class="grade-2">
+    ${blocoDia ?? `<div class="grade-2">
       <section class="cartao">
         <span class="rotulo">${VER != null ? "Meta de hoje" : "Sua meta de hoje"}</span>
         <span class="valor-m azul">${brl(metaHoje)}</span>
@@ -342,7 +424,7 @@ function telaMes() {
         <span class="rotulo">Atendimentos</span>
         <span class="valor-p">${d.hoje.atendimentos}</span>
       </div>
-    </section>
+    </section>`}
     ${blocoIndicacao(d, false)}`);
 }
 
@@ -356,9 +438,9 @@ const MESES_NOME = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", 
 const nomeMesAno = (mmYYYY) => (mmYYYY ? MESES_NOME[Number(mmYYYY.slice(0, 2)) - 1] : "");
 // "Período de outubro: 28/09 a 25/10" (+ aviso da semana que já conta para o mês seguinte)
 function periodoCampanha(curto) {
-  const p = estado.loja?.campanha_indicacao_periodo;
+  const p = dadosAlvo()?.campanha_indicacao_periodo || estado.loja?.campanha_indicacao_periodo;
   if (!p) return "";
-  const prox = p.semana_atual && p.semana_atual.mes !== p.mes;
+  const prox = !estado.anterior && p.semana_atual && p.semana_atual.mes !== p.mes;
   return `<div class="periodo">${I.relogioP}<span>Período de ${nomeMesAno(p.mes)}: <b>${dataCurta(p.inicio)} a ${dataCurta(p.fim)}</b>${prox && !curto ? ` · a semana ${dataCurta(p.semana_atual.inicio)}–${dataCurta(p.semana_atual.fim)} já conta para ${nomeMesAno(p.semana_atual.mes)}` : ""}</span></div>`;
 }
 
@@ -385,13 +467,13 @@ function blocoIndicacao(d, completo) {
           <span class="nota">${posicaoTexto(c.posicao, c.participantes) ? `${posicaoTexto(c.posicao, c.participantes)} na equipe` : "no período"}</span>
         </div>
       </div>
-      <div class="mini-cartao" style="gap:6px">
+      ${estado.anterior ? "" : `<div class="mini-cartao" style="gap:6px">
         <div class="linha-base"><span class="rotulo">Esta semana${sa.inicio ? ` (${dataCurta(sa.inicio)} a ${dataCurta(sa.fim)})` : ""}</span><strong>${num(sa.unidades, 0)} un. · ${brl(sa.valor_unidade, 2)} cada</strong></div>
         <div class="barra fina"><div class="barra-cheia" style="width:${barra}%;background:${maior ? "var(--verde)" : "var(--azul)"}"></div></div>
         <span class="nota" style="font-size:13px">${maior
           ? `Passou de ${r.limite_semanal}: todas as unidades desta semana valem ${brl(r.valor_acima_limite, 2)}.`
           : `Venda mais <b>${sa.faltam_para_valor_maior}</b> até domingo e todas as unidades da semana passam a valer ${brl(r.valor_acima_limite, 2)}.`}${sa.paga_no_proximo_mes ? " Esta semana termina no mês que vem e entra no pagamento de lá." : ""}</span>
-      </div>
+      </div>`}
       ${completo ? `
         <span class="nota" style="font-size:13px">Regra: até ${r.limite_semanal} unidades na semana, ${brl(r.valor_ate_limite, 2)} cada; acima de ${r.limite_semanal}, ${brl(r.valor_acima_limite, 2)} cada (todas da semana). Conta a semana inteira, de segunda a domingo, e ela é paga no mês em que termina. Vendas canceladas e unidades devolvidas não contam. Valor estimado, sujeito à conferência da gerência.</span>
         ${semanas ? `<div class="lista-prod" style="padding:0">${semanas}</div>` : ""}
@@ -728,13 +810,14 @@ function cartaoVendaLoja(v, m, destaque) {
       <div class="comparar">
         <div><span class="rotulo">vs mês passado</span>${variacao(v.variacao_vs_mes_anterior)}</div>
         <div><span class="rotulo">vs ano passado</span>${variacao(v.variacao_vs_ano_passado)}</div>
-        <div><span class="rotulo">Projeção</span><strong>${v.pct_projecao_meta != null ? pct(v.pct_projecao_meta) : brl(v.projecao_mes)}</strong></div>
+        ${estado.anterior ? `<div><span class="rotulo">Resultado</span><strong>${pct(v.pct_meta)}</strong></div>`
+          : `<div><span class="rotulo">Projeção</span><strong>${v.pct_projecao_meta != null ? pct(v.pct_projecao_meta) : brl(v.projecao_mes)}</strong></div>`}
       </div>
       <div class="linha nota-linha">
         <span>Ticket ${brl(v.ticket_medio, 2)} · ${num(v.atendimentos_por_dia, 0)} atend./dia</span>
         ${m ? `<span>Lucrat. ${num(m.lucratividade)}% ${pontos(m.variacao_lucratividade_pontos)}</span>` : ""}
       </div>
-      ${destaque ? `<span class="nota">Hoje: ${brl(v.vendido_hoje)} em ${v.atendimentos_hoje} atendimentos</span>` : ""}
+      ${destaque && !estado.anterior ? `<span class="nota">Hoje: ${brl(v.vendido_hoje)} em ${v.atendimentos_hoje} atendimentos</span>` : ""}
     </section>`;
 }
 
@@ -757,7 +840,7 @@ function gestaoVendas(g) {
   const maxMedia = Math.max(1, ...Object.values(medias));
   return `
     ${cartaoVendaLoja(v.total, mg["Total da rede"], true)}
-    <p class="nota" style="margin:-4px 4px 0">${esc(v.regra_meta || "")}. A marca na barra é onde a loja deveria estar hoje.</p>
+    <p class="nota" style="margin:-4px 4px 0">${esc(v.regra_meta || "")}.${estado.anterior ? "" : " A marca na barra é onde a loja deveria estar hoje."}</p>
     ${v.lojas.map((l) => cartaoVendaLoja(l, mg[l.loja])).join("")}
     ${dias && Object.keys(medias).length ? `
     <section class="cartao" style="gap:8px">
@@ -932,6 +1015,11 @@ function telaGestao() {
   if (!g) return moldura("gestao", "Gestão", "", `<section class="cartao"><p style="margin:0;font-weight:600">Os números de gestão aparecem depois da próxima sincronização (o sincronizador precisa estar atualizado e a tabela "gestao" criada no banco).</p></section>`);
   const abas = [["vendas", "Vendas"], ["estoque", "Estoque"], ["financeiro", "Caixa"], ["alertas", "Alertas"]];
   const qtdAlertas = (g.notas_pendentes?.total || 0) + (g.rupturas?.maiores?.filter((x) => x.curva === "A").length || 0);
+  if (estado.anterior) {
+    return moldura("gestao", "Gestão", `Mês fechado · ${esc(g.mes || "")}`, `
+      <p class="nota" style="margin:0 4px">No mês anterior aparecem as vendas, metas e lucratividade por loja. Estoque, caixa e alertas são sempre de hoje.</p>
+      ${gestaoVendas(g)}`);
+  }
   const corpo = { vendas: gestaoVendas, estoque: gestaoEstoque, financeiro: gestaoFinanceiro, alertas: gestaoAlertas }[estado.gestaoAba] || gestaoVendas;
   return moldura("gestao", "Gestão", "Todas as lojas", `
     <div class="segmentos" role="group" aria-label="Assunto">
@@ -1203,6 +1291,7 @@ app.addEventListener("click", async (e) => {
     window.scrollTo(0, y);
     return;
   }
+  if (e.target.closest("[data-acao=trocar-mes]")) { trocarMes(); return; }
   const seg = e.target.closest("[data-gestao-aba]");
   if (seg) { estado.gestaoAba = seg.dataset.gestaoAba; render(); return; }
   if (e.target.closest("[data-acao=todos-comprar], [data-acao=todos-campanha], [data-acao=todos-sug]")) {
@@ -1216,7 +1305,7 @@ app.addEventListener("click", async (e) => {
   }
   if (e.target.closest("[data-acao=sair]")) {
     if (!DEMO && sb) await sb.auth.signOut();
-    Object.assign(estado, { logado: false, perfil: null, dados: null, ranking: [], gestao: null, equipe: [] });
+    Object.assign(estado, { logado: false, perfil: null, dados: null, ranking: [], gestao: null, equipe: [], anterior: false, snapAtual: null, snapAnterior: null });
     location.hash = "#/login";
     render();
   }
