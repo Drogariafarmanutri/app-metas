@@ -10,7 +10,7 @@ const DOMINIO_EMAIL = "vendedor.farmanutri.app";
 const app = document.getElementById("app");
 
 let sb = null; // cliente Supabase
-const estado = { logado: false, anterior: false, snapAtual: null, snapAnterior: null, gestao: null, gestaoAba: "vendas", verTodosComprar: false, verTodosCampanha: false, verTodosSug: false, perfil: null, dados: null, ranking: [], equipe: [], loja: null, atualizadoEm: null, erro: null, verTodosVencendo: false,
+const estado = { logado: false, anterior: false, snapAtual: null, snapAnterior: null, gestao: null, gestaoAba: "vendas", escalaSemana: 0, escalaLoja: null, verTodosComprar: false, verTodosCampanha: false, verTodosSug: false, perfil: null, dados: null, ranking: [], equipe: [], loja: null, atualizadoEm: null, erro: null, verTodosVencendo: false,
   chat: [], iaCarregando: false, iaRestantes: null };
 // Gestor (diretoria/gerência) olhando os números de um vendedor: código dele; null = os próprios
 let VER = null;
@@ -1024,17 +1024,88 @@ function gestaoAlertas(g) {
   return blocos.join("") || `<section class="cartao"><p style="margin:0;font-weight:600">Sem alertas por enquanto.</p></section>`;
 }
 
+// ---------------------------------------------------------------------------
+// Escala 5x2 sugerida (só gestão)
+// ---------------------------------------------------------------------------
+const DIAS_CURTOS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const FUNCAO_CURTA = { farmaceutico: "Farm.", vendedor: "Vend.", caixa: "Caixa" };
+const nomeCurto = (n) => String(n || "").trim().split(/\s+/).slice(0, 2).join(" ");
+const horasTxt = (h) => `${Math.floor(h)}h${String(Math.round((h % 1) * 60)).padStart(2, "0")}`;
+
+function gestaoEscala(g) {
+  const e = g.escala;
+  if (!e?.semanas?.length) {
+    return `<section class="cartao"><p style="margin:0;font-weight:600">A sugestão de escala aparece depois da próxima sincronização (copie o escala.py novo para a pasta do sincronizador).</p></section>`;
+  }
+  const iS = Math.min(estado.escalaSemana, e.semanas.length - 1);
+  const s = e.semanas[iS];
+  const lojas = s.lojas.map((l) => l.loja);
+  const lojaSel = lojas.includes(estado.escalaLoja) ? estado.escalaLoja : lojas[0];
+  const lj = s.lojas.find((l) => l.loja === lojaSel);
+  const nomeLoja = (c) => (e.nomes_lojas || {})[String(c)] || `Loja ${c}`;
+  const folguistasAqui = (s.folguistas || []).flatMap((f) => f.dias.filter((x) => x.loja === lojaSel).map((x) => ({ ...x, nome: f.nome })));
+  const alertas = (s.alertas || []).filter((a) => a.startsWith(`Loja ${lojaSel} `));
+  const feriados = Object.entries(s.feriados || {});
+  const pessoa = (p) => `<span class="pessoa-escala${p.funcao === "farmaceutico" ? " farm" : ""}${p.folguista ? " folg" : ""}">${esc(nomeCurto(p.nome))}${p.funcao === "farmaceutico" ? " <small>farm.</small>" : p.folguista ? " <small>folguista</small>" : p.funcao === "caixa" ? " <small>caixa</small>" : ""}</span>`;
+  const dias = lj ? lj.dias.map((d) => `
+      <div class="dia-escala${d.feriado ? " feriado" : ""}">
+        <div class="dia-escala-topo"><strong>${esc(d.dia)} ${dataCurta(d.data)}</strong>${d.feriado ? ` <span class="selo">${esc(d.feriado)}</span>` : d.tipo === "domingo" ? ' <span class="rotulo">horário de domingo</span>' : ""}</div>
+        ${d.turnos.map((t) => `
+          <div class="turno-escala">
+            <div class="turno-escala-rot"><span>${esc(t.rotulo)}</span><span class="rotulo">${t.pessoas.length} pessoa${t.pessoas.length === 1 ? "" : "s"}</span></div>
+            <div class="turno-escala-pessoas">${t.pessoas.length ? t.pessoas.map(pessoa).join("") : '<span class="falta-escala">ninguém escalado</span>'}${t.farmaceutico ? "" : '<span class="falta-escala">sem farmacêutico</span>'}</div>
+          </div>`).join("")}
+      </div>`).join("") : "";
+  const ordemTurno = { manha: 0, tarde: 1 };
+  const pessoas = lj ? [...lj.pessoas].sort((a, b) => (ordemTurno[a.turno] - ordemTurno[b.turno]) || a.nome.localeCompare(b.nome)) : [];
+  return `
+    <section class="cartao">
+      <h2>Escala 5x2 sugerida</h2>
+      <p class="nota" style="margin:0">${esc(e.regras?.turnos || "")} · ${esc(e.regras?.horarios || "")}</p>
+      <div class="segmentos pequeno" role="group" aria-label="Semana">
+        ${e.semanas.map((x, i) => `<button type="button" data-escala-semana="${i}" aria-pressed="${i === iS}">${dataCurta(x.inicio)} a ${dataCurta(x.fim)}</button>`).join("")}
+      </div>
+      <div class="segmentos pequeno" role="group" aria-label="Loja">
+        ${lojas.map((c) => `<button type="button" data-escala-loja="${c}" aria-pressed="${c === lojaSel}">${esc(nomeLoja(c))}</button>`).join("")}
+      </div>
+      ${feriados.length ? `<p class="nota" style="margin:0">Feriado na semana: ${feriados.map(([d, n]) => `${dataCurta(d)} ${esc(n)}`).join(", ")} — loja abre no horário de domingo.</p>` : ""}
+    </section>
+    ${alertas.length ? `<section class="alerta" role="status"><div><strong>${alertas.length} ponto${alertas.length > 1 ? "s" : ""} de atenção</strong>
+      <ul class="lista-alertas">${alertas.slice(0, 12).map((a) => `<li>${esc(a.replace(/^Loja \d+ · /, ""))}</li>`).join("")}</ul></div></section>` : ""}
+    <section class="cartao">
+      <h2>${esc(nomeLoja(lojaSel))} · dia a dia</h2>
+      ${dias || '<p class="nota" style="margin:0">Sem equipe cadastrada nesta loja.</p>'}
+    </section>
+    <section class="cartao lista-prod">
+      <h2>Equipe e folgas</h2>
+      ${pessoas.map((p) => `<div class="prod"><div class="prod-nome">${esc(nomeCurto(p.nome))} <span class="rotulo">${FUNCAO_CURTA[p.funcao] || ""}</span><span class="nota">${p.turno === "manha" ? "Manhã" : "Tarde"} · folga ${p.folgas.map((d) => `${esc(DIAS_CURTOS[new Date(d + "T12:00").getDay()])} ${dataCurta(d)}`).join(" e ") || "-"}${p.feriado_trabalhado?.length ? ` · trabalha no feriado ${p.feriado_trabalhado.map(dataCurta).join(", ")} (compensar)` : ""}</span></div><span><span class="rotulo">${p.dias} dias</span> <strong>${horasTxt(p.horas)}</strong></span></div>`).join("")}
+      ${folguistasAqui.length ? `<div class="divisor"></div><p class="nota" style="margin:0">Folguista nesta loja: ${folguistasAqui.map((x) => `${esc(nomeCurto(x.nome))} ${dataCurta(x.data)} (${esc(x.turno.split(" ")[0].toLowerCase())})`).join(", ")}</p>` : ""}
+    </section>
+    ${(s.folguistas || []).map((f) => `
+    <section class="cartao lista-prod">
+      <h2>Folguista · ${esc(nomeCurto(f.nome))} <span class="rotulo">(${f.dias.length} dias · ${horasTxt(f.horas)})</span></h2>
+      ${f.dias.map((x) => `<div class="prod"><div class="prod-nome">${esc(DIAS_CURTOS[new Date(x.data + "T12:00").getDay()])} ${dataCurta(x.data)}<span class="nota">${esc(x.turno)}</span></div><strong>${esc(nomeLoja(x.loja))}</strong></div>`).join("")}
+      <p class="nota" style="margin:0">Folga: ${f.folgas.map(dataCurta).join(" e ") || "-"}</p>
+    </section>`).join("")}
+    <section class="cartao">
+      <h2>Como a sugestão foi feita</h2>
+      <ul class="lista-alertas">${(e.regras?.criterios || []).map((c) => `<li>${esc(c)}</li>`).join("")}</ul>
+      <p class="nota" style="margin:0">${esc(e.regras?.lei || "")}. ${esc(e.regras?.aviso || "")}</p>
+      <p class="nota" style="margin:0">Horas = tempo do turno (antes de descontar o intervalo). Gerada em ${dataCurta(e.gerada_em)} com o movimento das últimas 8 semanas.</p>
+    </section>`;
+}
+
 function telaGestao() {
   const g = estado.gestao;
   if (!g) return moldura("gestao", "Gestão", "", `<section class="cartao"><p style="margin:0;font-weight:600">Os números de gestão aparecem depois da próxima sincronização (o sincronizador precisa estar atualizado e a tabela "gestao" criada no banco).</p></section>`);
-  const abas = [["vendas", "Vendas"], ["estoque", "Estoque"], ["financeiro", "Caixa"], ["alertas", "Alertas"]];
+  const abas = [["vendas", "Vendas"], ["estoque", "Estoque"], ["financeiro", "Caixa"], ["escala", "Escala"], ["alertas", "Alertas"]];
   const qtdAlertas = (g.notas_pendentes?.total || 0) + (g.rupturas?.maiores?.filter((x) => x.curva === "A").length || 0);
   if (estado.anterior) {
     return moldura("gestao", "Gestão", `Mês fechado · ${esc(g.mes || "")}`, `
       <p class="nota" style="margin:0 4px">No mês anterior aparecem as vendas, metas e lucratividade por loja. Estoque, caixa e alertas são sempre de hoje.</p>
       ${gestaoVendas(g)}`);
   }
-  const corpo = { vendas: gestaoVendas, estoque: gestaoEstoque, financeiro: gestaoFinanceiro, alertas: gestaoAlertas }[estado.gestaoAba] || gestaoVendas;
+  const corpo = { vendas: gestaoVendas, estoque: gestaoEstoque, financeiro: gestaoFinanceiro, escala: gestaoEscala, alertas: gestaoAlertas }[estado.gestaoAba] || gestaoVendas;
   return moldura("gestao", "Gestão", "Todas as lojas", `
     <div class="segmentos" role="group" aria-label="Assunto">
       ${abas.map(([id, rot]) => `<button type="button" data-gestao-aba="${id}" aria-pressed="${estado.gestaoAba === id}">${rot}${id === "alertas" && qtdAlertas ? ` <span class="contador">${qtdAlertas}</span>` : ""}</button>`).join("")}
@@ -1308,6 +1379,10 @@ app.addEventListener("click", async (e) => {
   if (e.target.closest("[data-acao=trocar-mes]")) { trocarMes(); return; }
   const seg = e.target.closest("[data-gestao-aba]");
   if (seg) { estado.gestaoAba = seg.dataset.gestaoAba; render(); return; }
+  const semE = e.target.closest("[data-escala-semana]");
+  if (semE) { estado.escalaSemana = Number(semE.dataset.escalaSemana); render(); return; }
+  const lojaE = e.target.closest("[data-escala-loja]");
+  if (lojaE) { estado.escalaLoja = Number(lojaE.dataset.escalaLoja); render(); return; }
   if (e.target.closest("[data-acao=todos-comprar], [data-acao=todos-campanha], [data-acao=todos-sug]")) {
     if (e.target.closest("[data-acao=todos-campanha]")) estado.verTodosCampanha = !estado.verTodosCampanha;
     else if (e.target.closest("[data-acao=todos-sug]")) estado.verTodosSug = !estado.verTodosSug;
