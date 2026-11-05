@@ -225,11 +225,11 @@ async function carregarDados() {
   ]);
   if (e2) throw e2;
   if (e3) throw e3;
-  const { data: lj } = await sb.from("loja").select("dados").maybeSingle().then((r) => r, () => ({ data: null }));
+  const { data: lj } = await sb.from("loja").select("dados").eq("id", 1).maybeSingle().then((r) => r, () => ({ data: null }));
   estado.loja = lj?.dados || null;
   // painel de gestão: só diretoria/gerência (a tabela também é protegida no banco)
   const { data: gs } = perfil.gestor
-    ? await sb.from("gestao").select("dados,atualizado_em").maybeSingle().then((r) => r, () => ({ data: null }))
+    ? await sb.from("gestao").select("dados,atualizado_em").eq("id", 1).maybeSingle().then((r) => r, () => ({ data: null }))
     : { data: null };
   estado.gestao = gs?.dados ? { ...gs.dados, atualizado_em: gs.atualizado_em } : null;
   const comMes = (x) => (x ? { ...x.dados, mesano: x.mesano } : null);
