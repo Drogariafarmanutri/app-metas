@@ -106,6 +106,11 @@ const EXEMPLO = {
       ritmo: { faixa: 90, valor: 1300 },
     },
     ranking: { posicao: 4, total: 6 },
+    parados: [
+      { codigo: 701, nome: "OLEO CORPORAL AMENDOAS 200ML", estoque: 14, preco: 21.9, motivo: "da mesma categoria que você mais vende" },
+      { codigo: 702, nome: "ESMALTE CREMOSO VERMELHO", estoque: 9, preco: 7.5, motivo: "do mesmo laboratório que você vende" },
+      { codigo: 703, nome: "SABONETE INTIMO 200ML", estoque: 6, preco: 16.9, motivo: "da mesma categoria que você mais vende" },
+    ],
     sugestoes: [
       { origem: "cadastro", produto: "INFRALAX C/30", sugestao: "MAGNESIO DIMALATO 500MG C/60", preco: 34.9, conversao_equipe: 0.13, minha_conversao: 0.05, vendas_produto: 22 },
       { origem: "cadastro", produto: "FINASTERIDA 1MG C/30", sugestao: "MINOXIDIL SPRAY 50ML", preco: 59.9, conversao_equipe: 0.21, minha_conversao: 0.08, vendas_produto: 12 },
@@ -732,9 +737,17 @@ function telaVender() {
             ? `A equipe agrega em ${pct(o.conversao_equipe)} das vendas; você em ${pct(o.minha_conversao)}`
             : `${pct(o.conversao_equipe)} dos clientes que levam ${esc(o.produto)} levam também`}${o.origem === "cadastro" ? " · sugestão do sistema" : ""}</span></div></div>`).join("")}
     </section>` : "";
+  const par = d?.parados || [];
+  const parados = par.length ? `
+    <section class="cartao lista-prod parados">
+      <h2>Ajude a girar · parados há +90 dias</h2>
+      <p class="nota" style="margin:0 0 4px">Produtos sem nenhuma venda na rede há mais de 90 dias, escolhidos pelo que você costuma vender. A lista muda todo dia.</p>
+      ${par.map((p) => `<div class="prod"><div class="prod-nome">${esc(p.nome)}<span class="nota">${esc(p.motivo || "")}${p.estoque != null ? ` · ${num(p.estoque, 0)} em estoque` : ""}</span></div>${p.preco ? `<strong>${brl(p.preco, 2)}</strong>` : ""}</div>`).join("")}
+    </section>` : "";
   return moldura("vender", "Vender", "O que oferecer hoje", `
     ${meu}
     ${vendaJunto}
+    ${parados}
     ${campanha}
     ${vencendo}
     ${simples(`Em promoção hoje <span class="rotulo">(${(lj.promocoes || []).length})</span>`, lj.promocoes, (p) => (p.termino ? `até ${dataCurta(p.termino)}` : ""))}
@@ -880,6 +893,7 @@ function blocoSugestaoGestao(sv) {
   return `
     <section class="cartao lista-prod">
       <h2>Sugestão de venda <span class="rotulo">(${sv.pares_cadastrados} pares no Automatiza)</span></h2>
+      ${sv.produtos_parados_90d ? `<p class="nota" style="margin:0 0 4px">Cada vendedor recebe por dia 5 produtos parados (sem venda há +90 dias) parecidos com o que ele vende · <b>${num(sv.produtos_parados_90d, 0)}</b> produtos parados no total.</p>` : ""}
       <p class="nota" style="margin:0 0 4px">Conversão geral: <b>${pct(sv.conversao_geral, 1)}</b> — das vendas com o produto, em quantas o cliente levou a sugestão (90 dias, sem canceladas).</p>
       ${(sv.pares || []).slice(0, estado.verTodosSug ? 60 : 6).map((p) => lin(p, `${num(p.vendas_produto, 0)} vendas · ${num(p.levaram_sugestao, 0)} levaram${p.sem_estoque ? " · <b class='cai'>sugestão sem estoque</b>" : ""}${p.sem_preco ? " · <b class='cai'>sem preço</b>" : ""}${p.melhores?.length ? ` · melhor: ${esc(p.melhores[0].nome)} (${pct(p.melhores[0].conversao)})` : ""}`)).join("")}
       ${(sv.pares || []).length > 6 ? `<button class="link" type="button" data-acao="todos-sug">${estado.verTodosSug ? "Mostrar menos" : `Ver os ${sv.pares.length} pares`}</button>` : ""}
