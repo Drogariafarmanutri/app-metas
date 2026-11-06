@@ -1044,7 +1044,7 @@ function gestaoEscala(g) {
   const lj = s.lojas.find((l) => l.loja === lojaSel);
   const nomeLoja = (c) => (e.nomes_lojas || {})[String(c)] || `Loja ${c}`;
   const folguistasAqui = (s.folguistas || []).flatMap((f) => f.dias.filter((x) => x.loja === lojaSel).map((x) => ({ ...x, nome: f.nome })));
-  const alertas = (s.alertas || []).filter((a) => a.startsWith(`Loja ${lojaSel} `));
+  const alertas = (s.alertas || []).filter((a) => a.startsWith(`Loja ${lojaSel} `) && !a.includes("equipe insuficiente"));
   const feriados = Object.entries(s.feriados || {});
   const pessoa = (p) => `<span class="pessoa-escala${p.funcao === "farmaceutico" ? " farm" : ""}${p.folguista ? " folg" : ""}">${esc(nomeCurto(p.nome))}${p.funcao === "farmaceutico" ? " <small>farm.</small>" : p.folguista ? " <small>folguista</small>" : p.funcao === "caixa" ? " <small>caixa</small>" : ""}</span>`;
   const dias = lj ? lj.dias.map((d) => `
@@ -1053,7 +1053,7 @@ function gestaoEscala(g) {
         ${d.turnos.map((t) => `
           <div class="turno-escala">
             <div class="turno-escala-rot"><span>${esc(t.rotulo)}</span><span class="rotulo">${t.pessoas.length} pessoa${t.pessoas.length === 1 ? "" : "s"}</span></div>
-            <div class="turno-escala-pessoas">${t.pessoas.length ? t.pessoas.map(pessoa).join("") : '<span class="falta-escala">ninguém escalado</span>'}${t.farmaceutico ? "" : '<span class="falta-escala">sem farmacêutico</span>'}</div>
+            <div class="turno-escala-pessoas">${t.pessoas.length ? t.pessoas.map(pessoa).join("") : '<span class="falta-escala">ninguém escalado</span>'}${t.pessoas.length && t.vendedor_ou_farmaceutico === false ? '<span class="falta-escala">só caixa: falta vendedor</span>' : ""}</div>
           </div>`).join("")}
       </div>`).join("") : "";
   const ordemTurno = { manha: 0, tarde: 1, misto: 2 };
@@ -1072,6 +1072,22 @@ function gestaoEscala(g) {
     </section>
     ${alertas.length ? `<section class="alerta" role="status"><div><strong>${alertas.length} ponto${alertas.length > 1 ? "s" : ""} de atenção</strong>
       <ul class="lista-alertas">${alertas.slice(0, 12).map((a) => `<li>${esc(a.replace(/^Loja \d+ · /, ""))}</li>`).join("")}</ul></div></section>` : ""}
+    ${(() => {
+      const dm = (e.dimensionamento || []).find((x) => x.loja === lojaSel);
+      const geral = (e.dimensionamento || []).find((x) => x.loja == null);
+      if (!dm) return "";
+      return `<section class="cartao${dm.falta_turnos ? " destaque" : ""}">
+        <h2>Quadro de pessoal · semana normal</h2>
+        <div class="comparar">
+          <div><span class="rotulo">Precisa</span>${dm.turnos_necessarios} turnos<span class="rotulo">${horasTxt(dm.horas_necessarias)}</span></div>
+          <div><span class="rotulo">Equipe faz</span>${dm.turnos_equipe} turnos<span class="rotulo">${dm.equipe} pessoa${dm.equipe === 1 ? "" : "s"}</span></div>
+          <div><span class="rotulo">${dm.falta_turnos ? "Falta" : "Sobra"}</span>${dm.falta_turnos || dm.sobra_turnos} turno${(dm.falta_turnos || dm.sobra_turnos) === 1 ? "" : "s"}<span class="rotulo">${dm.falta_turnos ? horasTxt(dm.falta_horas) : "folga"}</span></div>
+        </div>
+        <p style="margin:0;font-weight:700">${esc(dm.sugestao)}</p>
+        <p class="nota" style="margin:0">${dm.fixo ? `Regra da loja: sempre ${dm.pessoas_por_turno} pessoa por turno (vendedor ou farmacêutico).` : `Conta ${dm.pessoas_por_turno} pessoas por turno, com pelo menos 1 vendedor ou farmacêutico.`} ${dm.turnos_semana} turnos por semana · ${dm.vendedores_farmaceuticos} vendedor(es)/farmacêutico(s) e ${dm.caixas} caixa(s) · cada pessoa faz até 5 turnos (${horasTxt(dm.horas_por_pessoa)}).</p>
+        ${geral ? `<p class="nota" style="margin:0"><strong>${esc(geral.sugestao)}</strong></p>` : ""}
+      </section>`;
+    })()}
     <section class="cartao">
       <h2>${esc(nomeLoja(lojaSel))} · dia a dia</h2>
       ${dias || '<p class="nota" style="margin:0">Sem equipe cadastrada nesta loja.</p>'}
