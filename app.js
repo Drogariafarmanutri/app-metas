@@ -1056,7 +1056,7 @@ function gestaoEscala(g) {
             <div class="turno-escala-pessoas">${t.pessoas.length ? t.pessoas.map(pessoa).join("") : '<span class="falta-escala">ninguém escalado</span>'}${t.farmaceutico ? "" : '<span class="falta-escala">sem farmacêutico</span>'}</div>
           </div>`).join("")}
       </div>`).join("") : "";
-  const ordemTurno = { manha: 0, tarde: 1 };
+  const ordemTurno = { manha: 0, tarde: 1, misto: 2 };
   const pessoas = lj ? [...lj.pessoas].sort((a, b) => (ordemTurno[a.turno] - ordemTurno[b.turno]) || a.nome.localeCompare(b.nome)) : [];
   return `
     <section class="cartao">
@@ -1078,7 +1078,7 @@ function gestaoEscala(g) {
     </section>
     <section class="cartao lista-prod">
       <h2>Equipe e folgas</h2>
-      ${pessoas.map((p) => `<div class="prod"><div class="prod-nome">${esc(nomeCurto(p.nome))} <span class="rotulo">${FUNCAO_CURTA[p.funcao] || ""}</span><span class="nota">${p.turno === "manha" ? "Manhã" : "Tarde"} · folga ${p.folgas.map((d) => `${esc(DIAS_CURTOS[new Date(d + "T12:00").getDay()])} ${dataCurta(d)}`).join(" e ") || "-"}${p.feriado_trabalhado?.length ? ` · trabalha no feriado ${p.feriado_trabalhado.map(dataCurta).join(", ")} (compensar)` : ""}</span></div><span><span class="rotulo">${p.dias} dias</span> <strong>${horasTxt(p.horas)}</strong></span></div>`).join("")}
+      ${pessoas.map((p) => `<div class="prod"><div class="prod-nome">${esc(nomeCurto(p.nome))} <span class="rotulo">${FUNCAO_CURTA[p.funcao] || ""}</span><span class="nota">${p.turno === "misto" ? Object.entries(p.turnos_por_dia || {}).map(([d, t]) => `${DIAS_CURTOS[new Date(d + "T12:00").getDay()]} ${t === "manha" ? "manhã" : "tarde"}`).join(", ") : p.turno === "manha" ? "Manhã" : "Tarde"} · folga ${p.folgas.map((d) => `${esc(DIAS_CURTOS[new Date(d + "T12:00").getDay()])} ${dataCurta(d)}`).join(" e ") || "-"}${p.feriado_trabalhado?.length ? ` · trabalha no feriado ${p.feriado_trabalhado.map(dataCurta).join(", ")} (compensar)` : ""}</span></div><span><span class="rotulo">${p.dias} dias</span> <strong>${horasTxt(p.horas)}</strong></span></div>`).join("")}
       ${folguistasAqui.length ? `<div class="divisor"></div><p class="nota" style="margin:0">Folguista nesta loja: ${folguistasAqui.map((x) => `${esc(nomeCurto(x.nome))} ${dataCurta(x.data)} (${esc(x.turno.split(" ")[0].toLowerCase())})`).join(", ")}</p>` : ""}
     </section>
     ${(s.folguistas || []).map((f) => `
