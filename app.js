@@ -57,6 +57,10 @@ const I = {
   relogioP: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
   equipe: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2A5 5 0 0 1 21.5 19"/></svg>`,
   gestao: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V10l7-5 7 5v11"/><path d="M9 21v-6h6v6"/></svg>`,
+  alertaVermelho: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C62828" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>`,
+  seta: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>`,
+  lupa: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5560" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>`,
+  calendario: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>`,
   ranking: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg>`,
 };
 
@@ -202,6 +206,7 @@ async function carregarDados() {
       equipe: gestor ? equipeExemplo() : [],
       gestao: gestor ? (await import("./exemplo-gestao.js")).default : null,
     });
+    await carregarPopular();
     await fecharCarga();
     return;
   }
@@ -245,6 +250,7 @@ async function carregarDados() {
     : [];
   estado.ranking = rk || [];
   estado.atualizadoEm = sinc?.atualizado_em || ind?.atualizado_em || null;
+  await carregarPopular();
   await fecharCarga();
 }
 
@@ -350,22 +356,23 @@ function moldura(aba, titulo, subtitulo, corpo) {
     </header>
     ${vendo ? `<a class="vendo" href="#/equipe">${I.voltar}<span>Vendo <strong>${esc(vendo.nome)}</strong> · voltar para a equipe</span></a>` : ""}
     ${estado.anterior ? `<button type="button" class="faixa-anterior" data-acao="trocar-mes">${I.relogioP}<span>Mês fechado: <b>${esc(nomeMes(d?.mesano) || "mês anterior")}</b> · toque para voltar ao mês atual</span></button>`
-      : `<button type="button" class="link-anterior" data-acao="trocar-mes">Ver resultados do mês anterior</button>`}
+      : aba === "popular" ? "" : `<button type="button" class="link-anterior" data-acao="trocar-mes">Ver resultados do mês anterior</button>`}
     <main id="conteudo" tabindex="-1">
       ${avisoSincronizacao()}
       ${corpo}
       ${estado.atualizadoEm ? `<p class="nota centro">Atualizado às ${hora(estado.atualizadoEm)} · dados do Automatiza</p>` : ""}
     </main>
     <nav class="abas" aria-label="Navegação principal"><div class="dentro" style="grid-template-columns:repeat(${abas.length},minmax(0,1fr))">
-      ${abas.map(([id, rot, ic, base]) => `<a href="#/${id}" ${(base || id) === aba && (vendo ? id !== "equipe" : true) ? 'aria-current="page"' : ""}>${ic}${rot}</a>`).join("")}
-    </div></nav>`;
+      ${abas.map(([id, rot, ic, base]) => `<a href="#/${id}" ${(base || id) === aba && (vendo ? id !== "equipe" : true) ? 'aria-current="page"' : ""}>${ic}${rot}${seloAba(base || id)}</a>`).join("")}
+    </div></nav>
+    ${popAvisoHTML()}`;
 }
 
 function semDados(aba, titulo) {
   const msg = estado.perfil?.gestor && VER == null
     ? "Você não tem meta própria neste mês. Veja os números de todos na aba Equipe."
     : "Ainda não há números neste mês. Assim que houver vendas e meta cadastradas, eles aparecem aqui.";
-  return moldura(aba, titulo, "", `<section class="cartao"><p style="margin:0;font-weight:600">${msg}</p></section>`);
+  return moldura(aba, titulo, "", `${aba === "mes" ? popAlertaMes() : aba === "indicadores" ? popCartaoIndicadores() : ""}<section class="cartao"><p style="margin:0;font-weight:600">${msg}</p></section>`);
 }
 
 // ---------------------------------------------------------------------------
@@ -377,6 +384,7 @@ function telaMes() {
   const primeiroNome = esc(String(perfilAlvo()?.nome || "").split(" ")[0]);
   if (d.sem_meta) {
     return moldura("mes", "Sua meta ainda não foi cadastrada", `Olá, ${primeiroNome}`, `
+      ${popAlertaMes()}
       <section class="cartao"><span class="rotulo">Vendido no mês</span><span class="valor-g">${brl(d.faturamento)}</span></section>`);
   }
   const prox = d.proxima_faixa;
@@ -400,6 +408,7 @@ function telaMes() {
       <span class="nota">${brl(d.faturamento)} vendidos · meta ${brl(d.meta)}</span>
     </section>` : null;
   return moldura("mes", fechado ? (d.supermeta ? "Supermeta batida!" : d.pct_meta >= 1 ? "Meta batida!" : "Mês encerrado") : titulo, `Olá, ${primeiroNome}`, `
+    ${popAlertaMes()}
     <section class="cartao">
       <div class="linha-base"><span class="rotulo">Vendido no mês</span><span class="rotulo">Meta ${brl(d.meta)}</span></div>
       <div style="display:flex;align-items:baseline;gap:8px"><span class="valor-g">${brl(d.faturamento)}</span><span class="valor-p azul" style="font-size:16px">${pct(d.pct_meta)}</span></div>
@@ -530,6 +539,7 @@ function telaIndicadores() {
     </section>` : "";
   return moldura("indicadores", "Meus Indicadores", "", `
     ${alerta}
+    ${popCartaoIndicadores()}
     <section class="cartao" style="gap:14px">
       ${barraIndicador(`Identificação de clientes${daLoja ? " (loja)" : ""}`, pct(i.identificacao), ident * 100, ident > 0.5 ? "var(--verde)" : "var(--ouro)", 50,
         `${pct(i.identificacao)} de identificação; mínimo 50%`, `${i.vendas_identificadas} de ${i.vendas} vendas · mínimo para premiação: 50%`)}
@@ -767,7 +777,8 @@ function telaEquipe() {
   const bateu70 = eq.filter((m) => m.dados.premiacao?.condicoes?.faixa_70).length;
   const liberadas = eq.filter((m) => m.dados.premiacao?.liberada);
   const totPremio = liberadas.reduce((a, m) => a + (m.dados.premiacao.valor_hoje || 0), 0);
-  const ordem = [...eq].sort((a, b) => (b.dados.pct_meta || 0) - (a.dados.pct_meta || 0));
+  const porPopular = POP.carregado && POP.ordemEquipe === "popular";
+  const ordem = [...eq].sort((a, b) => (porPopular ? popQtdMembro(b.codigo) - popQtdMembro(a.codigo) : 0) || (b.dados.pct_meta || 0) - (a.dados.pct_meta || 0));
   const linha = (m) => {
     const d = m.dados, p = d.premiacao || {};
     const cor = d.pct_meta >= 1 ? "var(--verde)" : d.pct_meta > 0.7 ? "var(--azul)" : "var(--ouro)";
@@ -786,6 +797,7 @@ function telaEquipe() {
           <span>Lucrat. ${num(d.indicadores?.lucratividade)}% · Hoje ${brl(d.hoje?.faturamento)}</span>
           <span>${p.liberada ? `<span class="verde">Prêmio ${brl(p.valor_hoje)}</span>` : `Bloqueado${motivo ? `: ${motivo}` : ""}`}</span>
         </div>
+        ${POP.carregado ? `<div>${popChipMembro(m.codigo)}</div>` : ""}
       </a>`;
   };
   return moldura("equipe", "Equipe", `Olá, ${esc(String(estado.perfil?.nome || "").split(" ")[0])}`, `
@@ -800,6 +812,9 @@ function telaEquipe() {
       <section class="cartao"><span class="rotulo">Prêmios liberados</span><span class="valor-m verde">${liberadas.length}</span><span class="nota">${brl(totPremio)} hoje</span></section>
     </div>
     <h2 style="margin:4px 0 0;font-size:15px;font-weight:700">Vendedores · toque para ver o detalhe</h2>
+    ${POP.carregado ? `<div class="pop-chips" role="group" aria-label="Ordenar"><span class="rotulo">Ordenar:</span>
+      <button type="button" data-pop-ordem="meta" aria-pressed="${!porPopular}">Meta</button>
+      <button type="button" data-pop-ordem="popular" aria-pressed="${porPopular}">Pendências Popular</button></div>` : ""}
     ${ordem.map(linha).join("")}`);
 }
 
@@ -1021,7 +1036,7 @@ function gestaoAlertas(g) {
       <h2>Balanço · últimos ${b.periodo_dias} dias</h2>
       ${b.por_loja.map((x) => `<div class="prod"><div class="prod-nome">${esc(x.loja)}<span class="nota">${x.itens_divergentes} de ${x.itens_contados} itens com diferença · sobras ${brl(x.sobras_valor)}</span></div><span><span class="rotulo">faltas</span> <strong>${brl(x.faltas_valor)}</strong></span></div>`).join("")}
     </section>`);
-  return blocos.join("") || `<section class="cartao"><p style="margin:0;font-weight:600">Sem alertas por enquanto.</p></section>`;
+  return popBlocoGestor() + (blocos.join("") || `<section class="cartao"><p style="margin:0;font-weight:600">Sem alertas por enquanto.</p></section>`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1115,7 +1130,8 @@ function telaGestao() {
   const g = estado.gestao;
   if (!g) return moldura("gestao", "Gestão", "", `<section class="cartao"><p style="margin:0;font-weight:600">Os números de gestão aparecem depois da próxima sincronização (o sincronizador precisa estar atualizado e a tabela "gestao" criada no banco).</p></section>`);
   const abas = [["vendas", "Vendas"], ["estoque", "Estoque"], ["financeiro", "Caixa"], ["escala", "Escala"], ["alertas", "Alertas"]];
-  const qtdAlertas = (g.notas_pendentes?.total || 0) + (g.rupturas?.maiores?.filter((x) => x.curva === "A").length || 0);
+  const qtdAlertas = (g.notas_pendentes?.total || 0) + (g.rupturas?.maiores?.filter((x) => x.curva === "A").length || 0)
+    + (POP.carregado ? POP.pend.filter(popRevisao).length + POP.pend.filter((c) => (popDias(c) ?? 0) >= DIAS_ESTORNO).length : 0);
   if (estado.anterior) {
     return moldura("gestao", "Gestão", `Mês fechado · ${esc(g.mes || "")}`, `
       <p class="nota" style="margin:0 4px">No mês anterior aparecem as vendas, metas e lucratividade por loja. Estoque, caixa e alertas são sempre de hoje.</p>
@@ -1236,6 +1252,464 @@ function equipeExemplo() {
 }
 
 // ---------------------------------------------------------------------------
+// Farmácia Popular — pendências da auditoria (dados do banco popular_*, só por RPC)
+// Colaborador: tela #/popular, alerta no Meu Mês, selo na aba, cartão em Indicadores e aviso
+// 1x por dia. Gestor: bloco em Gestão › Alertas (revisões, 7º dia, duplicados, usuário
+// genérico), selo na aba Gestão e chip de pendências na Equipe.
+// ---------------------------------------------------------------------------
+const DIAS_ESTORNO = CFG.DIAS_ESTORNO_POPULAR || 7;
+const POP = {
+  carregado: false,      // false = recursos desligados (banco sem as funções popular_*)
+  pend: [],              // pendências que o usuário enxerga (popular_minhas_pendencias)
+  lista: null,           // todos os atendimentos que o usuário enxerga (carregado sob demanda)
+  carregandoLista: false,
+  lote: null,            // { data, lote } da última auditoria importada
+  kpi: "pend", busca: "", de: "", ate: "", verDatas: false, mostrar: 60,
+  detalhe: null,         // { chave, itens, hist, erro }
+  msg: null, salvando: false, aviso: false, ordemEquipe: "meta",
+};
+const ST_POP = {
+  "CORRETO": "ok", "INCORRETO": "erro", "VERIFICAR": "atencao", "NÃO LANÇADO": "neutro", "VENDA CANCELADA": "erro",
+};
+const SIT_POP = { REVISAO: "Revisão solicitada", CORRIGIDO: "Revisão solicitada", VALIDADO: "Validado", PENDENTE: "Pendente" };
+const popPendente = (c) => c.situacao != null && c.situacao !== "VALIDADO";
+const popDias = (c) => (c.dias_em_aberto == null ? null : Number(c.dias_em_aberto));
+const popRevisao = (c) => c.situacao === "REVISAO" || c.situacao === "CORRIGIDO";
+const dataBR = (iso) => (iso ? String(iso).slice(0, 10).split("-").reverse().join("/") : "");
+const soDigitos = (v) => String(v ?? "").replace(/\D/g, "");
+const semAcento = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const telefone = (v) => {
+  const d = soDigitos(v);
+  if (!d || /^0+$/.test(d)) return "";
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return d;
+};
+const popMeus = () => {
+  const cod = estado.perfil?.codigo;
+  return estado.perfil?.gestor ? POP.pend : POP.pend.filter((c) => c.cod_vendedor === cod);
+};
+
+function popPendencia(c) {
+  const p = [];
+  if (c.status === "NÃO LANÇADO") p.push("Atendimento não lançado no RegularizaFarma");
+  else if (c.status !== "CORRETO" && c.obs_ia) p.push(c.obs_ia);
+  if (c.status === "VENDA CANCELADA") p.push("Venda cancelada no Automatiza, mas o atendimento está lançado");
+  if (c.divergencia) p.push(c.divergencia);
+  return p.join(" · ");
+}
+
+function seloDias(c) {
+  const d = popDias(c);
+  if (d == null || !popPendente(c)) return "";
+  const cls = d >= DIAS_ESTORNO ? "dias-vermelho" : d >= DIAS_ESTORNO - 2 ? "dias-amarelo" : "dias-cinza";
+  return `<span class="pill ${cls}">${d} dia${d === 1 ? "" : "s"}${d >= DIAS_ESTORNO ? " · estorno" : ""}</span>`;
+}
+const seloStatus = (c) => `<span class="pill st-${ST_POP[c.status] || "neutro"}">${esc(c.status)}</span>`;
+
+async function carregarPopular() {
+  if (DEMO) {
+    const ex = popularExemplo();
+    Object.assign(POP, { carregado: true, pend: ex.filter(popPendente).sort((a, b) => a.data.localeCompare(b.data)), lista: ex,
+      lote: { data: "2026-11-06", lote: 31 } });
+    return;
+  }
+  try {
+    const { data, error } = await sb.rpc("popular_minhas_pendencias");
+    if (error) throw error;
+    POP.pend = (data || []).filter((c) => c.origem !== "AUDITORIA");
+    POP.carregado = true;
+    const { data: lt } = await sb.from("popular_lotes").select("lote,data_auditoria").order("data_auditoria", { ascending: false }).limit(1).maybeSingle()
+      .then((r) => r, () => ({ data: null }));
+    POP.lote = lt ? { data: lt.data_auditoria, lote: lt.lote } : null;
+    // gestor: a lista completa alimenta duplicados e usuário genérico (em segundo plano)
+    if (estado.perfil?.gestor || POP.lista) carregarListaPopular(false);
+  } catch (ex) {
+    POP.carregado = false; // funções ainda não instaladas: o app segue sem a Farmácia Popular
+    console.info("Farmácia Popular indisponível:", ex?.message || ex);
+  }
+}
+
+async function carregarListaPopular(redesenhar = true) {
+  if (DEMO || POP.carregandoLista) return;
+  POP.carregandoLista = true;
+  try {
+    const { data, error } = await sb.rpc("popular_painel_usuario");
+    if (error) throw error;
+    POP.lista = (data || []).filter((c) => c.origem !== "AUDITORIA");
+  } catch (ex) {
+    console.warn("Lista Farmácia Popular", ex);
+    if (!POP.lista) POP.lista = [];
+  } finally {
+    POP.carregandoLista = false;
+    if (redesenhar || estado.perfil?.gestor) {
+      const r = rotaAtual();
+      if (r.startsWith("popular") || r === "gestao" || r === "indicadores" || r === "mes" || r === "equipe") render();
+    }
+  }
+}
+
+// mês corrente (para o % de corretos)
+const mesCorrente = () => new Date().toISOString().slice(0, 7);
+
+function popResumoMes(lista) {
+  const mes = (lista || []).filter((c) => String(c.data || "").startsWith(mesCorrente()));
+  const total = mes.length;
+  const corretos = mes.filter((c) => c.status === "CORRETO").length;
+  return { total, corretos, pct: total ? corretos / total : null };
+}
+
+// ---- cartões em outras telas -----------------------------------------------
+function popAlertaMes() {
+  if (!POP.carregado || VER != null || estado.anterior) return "";
+  const meus = popMeus();
+  if (!meus.length) {
+    if (!POP.lote) return "";
+    const r = popResumoMes(POP.lista);
+    return `<a class="cartao pop-ok" href="#/popular">${I.ok}<span>Farmácia Popular em dia · auditoria até <b>${dataBR(POP.lote.data)}</b>${r.total ? ` · ${r.corretos} de ${r.total} corretos no mês` : ""}</span></a>`;
+  }
+  const venc = meus.filter((c) => (popDias(c) ?? 0) >= DIAS_ESTORNO).length;
+  return `
+    <a class="pop-alerta" href="#/popular">
+      <span class="pop-alerta-ic">${I.alertaVermelho}</span>
+      <span class="pop-alerta-txt"><strong>Farmácia Popular: ${meus.length} pendência${meus.length > 1 ? "s" : ""}</strong>
+        <span>${venc ? `${venc} chegou ao ${DIAS_ESTORNO}º dia — será estornada` : "resolva antes do " + DIAS_ESTORNO + "º dia para não ter estorno"}</span></span>
+      <span aria-hidden="true">${I.seta}</span>
+    </a>`;
+}
+
+function popCartaoIndicadores() {
+  if (!POP.carregado || VER != null || estado.anterior) return "";
+  const r = popResumoMes(POP.lista);
+  const meus = popMeus();
+  return `
+    <section class="cartao pop-ind">
+      <div class="linha-base"><h2 style="margin:0">Farmácia Popular</h2><span class="pill st-ok">+12% no prêmio</span></div>
+      <div class="grade-2" style="gap:12px">
+        <div><span class="valor-m azul">${r.total}</span><span class="nota" style="display:block">atendimentos no mês</span></div>
+        <div><span class="valor-m verde">${r.pct == null ? "–" : pct(r.pct)}</span><span class="nota" style="display:block">corretos na auditoria</span></div>
+      </div>
+      <div class="barra fina"><div class="barra-cheia" style="width:${(r.pct || 0) * 100}%;background:var(--verde)"></div></div>
+      ${meus.length
+        ? `<a class="pop-link-erro" href="#/popular">${meus.length} pendência${meus.length > 1 ? "s" : ""} pode${meus.length > 1 ? "m" : ""} estornar vendas ${I.seta}</a>`
+        : `<a class="pop-link" href="#/popular">Ver meus atendimentos ${I.seta}</a>`}
+    </section>`;
+}
+
+// selo vermelho na aba (Meu Mês do colaborador; Gestão do gestor = revisões aguardando)
+function seloAba(id) {
+  if (!POP.carregado || estado.anterior) return "";
+  let n = 0;
+  if (id === "mes" && !estado.perfil?.gestor) n = popMeus().length;
+  if (id === "gestao" && estado.perfil?.gestor) n = POP.pend.filter(popRevisao).length;
+  return n ? `<span class="selo-aba" aria-label="${n} pendências">${n > 99 ? "99+" : n}</span>` : "";
+}
+
+// chip da equipe (gestor)
+function popChipMembro(codigo) {
+  if (!POP.carregado) return "";
+  const p = POP.pend.filter((c) => c.cod_vendedor === codigo);
+  if (!p.length) return `<span class="pill st-ok">Popular em dia</span>`;
+  const v = p.filter((c) => (popDias(c) ?? 0) >= DIAS_ESTORNO).length;
+  return `<span class="pill ${v ? "dias-vermelho" : "dias-amarelo"}">Popular: ${p.length} pend.${v ? ` · ${v} no ${DIAS_ESTORNO}º dia` : ""}</span>`;
+}
+const popQtdMembro = (codigo) => POP.pend.filter((c) => c.cod_vendedor === codigo).length;
+
+// bloco do gestor em Gestão › Alertas
+function popBlocoGestor() {
+  if (!POP.carregado) return "";
+  const pend = POP.pend;
+  const venc = pend.filter((c) => (popDias(c) ?? 0) >= DIAS_ESTORNO).length;
+  const revis = pend.filter(popRevisao);
+  const base = POP.lista || [];
+  const dup = base.filter((c) => c.duplicado && popPendenteOuRecente(c)).length;
+  const gen = base.filter((c) => c.vendedor_generico && popPendenteOuRecente(c)).length;
+  const kpi = (n, cor, rot, sub, href) => `<a class="cartao pop-kpi" href="${href}"><span class="valor-m" style="color:${cor}">${n}</span><strong>${rot}</strong><span class="nota">${sub}</span></a>`;
+  return `
+    <div class="linha-base" style="margin:2px 4px 0"><h2 style="margin:0;font-size:17px">Farmácia Popular</h2><a href="#/popular" style="font-size:13px;font-weight:700">Painel completo</a></div>
+    <div class="grade-2">
+      ${kpi(pend.length, "var(--erro)", "Pendentes", venc ? `${venc} já no ${DIAS_ESTORNO}º dia` : "nenhuma no " + DIAS_ESTORNO + "º dia", "#/popular")}
+      ${kpi(revis.length, "var(--azul-escuro)", "Revisões", "aguardando você", "#/popular?revisao")}
+      ${kpi(POP.lista ? dup : "…", "#7a5600", "Duplicados", "excluir excedente no RegularizaFarma", "#/popular?duplicados")}
+      ${kpi(POP.lista ? gen : "…", "var(--cinza)", "Usuário genérico", "cobrar login pessoal", "#/popular?generico")}
+    </div>
+    ${revis.length ? `
+    <section class="cartao">
+      <h2 style="margin:0">Revisões solicitadas</h2>
+      ${revis.slice(0, 15).map((c) => `
+        <div class="pop-rev">
+          <div class="linha-base"><a href="#/popular/${encodeURIComponent(c.chave)}"><b>${esc(nomeCurto(c.vendedor))}</b></a><span class="nota">Cupom ${esc(c.coo)} · ${dataBR(c.data)}</span></div>
+          <span class="nota" style="font-size:13px">${c.obs_manual ? `“${esc(c.obs_manual)}”` : "Sem justificativa"} · ${esc(c.status)}</span>
+          <div class="pop-botoes">
+            <button type="button" class="pop-bt-ok" data-pop-validar="${esc(c.chave)}">Validar</button>
+            <button type="button" class="pop-bt-manter" data-pop-manter="${esc(c.chave)}">Manter pendente</button>
+          </div>
+        </div>`).join("")}
+      ${revis.length > 15 ? `<a href="#/popular?revisao" class="nota">Ver todas as ${revis.length}</a>` : ""}
+    </section>` : ""}`;
+}
+// duplicados e genéricos: só os que ainda importam (pendentes ou dos últimos 30 dias)
+function popPendenteOuRecente(c) {
+  if (popPendente(c)) return true;
+  const d = new Date(String(c.data || "").slice(0, 10) + "T12:00");
+  return Date.now() - d.getTime() < 30 * 86400000;
+}
+
+// ---- tela #/popular ---------------------------------------------------------
+function telaPopular() {
+  const rota = rotaAtual();
+  const chave = rota.startsWith("popular/") ? decodeURIComponent(rota.slice(8)) : null;
+  if (chave) return telaPopularDetalhe(chave);
+  const filtroRota = (location.hash.split("?")[1] || "");
+  if (filtroRota && POP._filtroRota !== filtroRota) {
+    POP._filtroRota = filtroRota;
+    POP.kpi = { revisao: "rev", duplicados: "dup", generico: "gen" }[filtroRota] || POP.kpi;
+  }
+  if (!POP.carregado) {
+    return moldura("popular", "Farmácia Popular", "", `<section class="cartao"><p style="margin:0;font-weight:600">A auditoria do Farmácia Popular ainda não está ligada a este app.</p></section>`);
+  }
+  if (!POP.lista && !POP.carregandoLista) carregarListaPopular(true);
+  const gestor = !!estado.perfil?.gestor;
+  const base = POP.lista || POP.pend;
+  const cont = {
+    total: base.length,
+    ok: base.filter((c) => c.status === "CORRETO").length,
+    pend: base.filter(popPendente).length,
+    dup: base.filter((c) => c.duplicado).length,
+  };
+  const filtros = {
+    total: () => true, ok: (c) => c.status === "CORRETO", pend: popPendente, dup: (c) => c.duplicado,
+    rev: popRevisao, gen: (c) => c.vendedor_generico,
+  };
+  const q = semAcento(POP.busca.trim());
+  const qd = soDigitos(POP.busca);
+  let L = base.filter(filtros[POP.kpi] || popPendente).filter((c) => {
+    if (POP.de && String(c.data) < POP.de) return false;
+    if (POP.ate && String(c.data) > POP.ate) return false;
+    if (!q) return true;
+    return semAcento(c.cliente).includes(q) || semAcento(c.vendedor).includes(q)
+      || (qd && (soDigitos(c.cpf).includes(qd) || String(c.autms || "").includes(qd) || String(c.coo || "").includes(qd)));
+  });
+  const asc = POP.kpi === "pend" || POP.kpi === "rev";
+  L = L.sort((a, b) => (asc ? 1 : -1) * (String(a.data).localeCompare(String(b.data)) || (Number(a.coo) - Number(b.coo))));
+  const nomeKpi = { total: "atendimentos", ok: "corretos", pend: "pendências", dup: "duplicados", rev: "revisões solicitadas", gen: "no usuário genérico" }[POP.kpi];
+  const card = (id, n, cor, rot) => `<button type="button" class="pop-k ${POP.kpi === id ? "ativo" : ""}" data-pop-kpi="${id}" aria-pressed="${POP.kpi === id}"><span style="color:${cor}">${n}</span>${rot}</button>`;
+  const item = (c) => `
+    <a class="cartao pop-item" href="#/popular/${encodeURIComponent(c.chave)}">
+      <div class="linha-base"><strong>Cupom ${esc(c.coo)} <span class="nota" style="font-size:13px">· ${dataBR(c.data)}</span></strong>${seloDias(c)}</div>
+      <span class="pop-cliente">${esc(c.cliente || "—")}</span>
+      ${gestor ? `<span class="nota" style="font-size:13px">${esc(c.vendedor || "sem vendedor")}${c.loja ? " · " + esc(c.loja) : ""}</span>` : ""}
+      ${popPendencia(c) ? `<span class="nota pop-motivo">${esc(popPendencia(c))}</span>` : ""}
+      <div class="pop-pills">${seloStatus(c)}${popRevisao(c) ? `<span class="pill st-rev">Revisão solicitada</span>` : ""}${c.situacao === "VALIDADO" ? `<span class="pill st-ok">Validado</span>` : ""}${c.duplicado ? `<span class="pill dias-amarelo">duplicado</span>` : ""}${c.vendedor_generico ? `<span class="pill st-neutro">usuário genérico</span>` : ""}</div>
+    </a>`;
+  return moldura("popular", "Farmácia Popular", gestor ? "Todas as lojas" : esc(String(estado.perfil?.nome || "").split(" ")[0]), `
+    <div class="pop-kpis">
+      ${card("total", POP.lista ? cont.total : "…", "var(--azul-escuro)", "Total")}
+      ${card("ok", POP.lista ? cont.ok : "…", "var(--verde)", "Corretos")}
+      ${card("pend", cont.pend, "var(--erro)", "Pendentes")}
+      ${card("dup", POP.lista ? cont.dup : "…", "#7a5600", "Duplic.")}
+    </div>
+    ${gestor ? `<div class="pop-chips">
+      <button type="button" data-pop-kpi="rev" aria-pressed="${POP.kpi === "rev"}">Revisões (${POP.pend.filter(popRevisao).length})</button>
+      <button type="button" data-pop-kpi="gen" aria-pressed="${POP.kpi === "gen"}">Usuário genérico</button>
+    </div>` : ""}
+    <div class="pop-busca">
+      <label class="pop-campo">${I.lupa}<input id="pop-q" type="search" value="${esc(POP.busca)}" placeholder="Nome, CPF, autorização ou cupom" aria-label="Pesquisar"></label>
+      <button type="button" class="pop-cal ${POP.de || POP.ate ? "ativo" : ""}" data-acao="pop-datas" aria-label="Filtrar por data" aria-expanded="${POP.verDatas}">${I.calendario}</button>
+    </div>
+    ${POP.verDatas ? `<div class="pop-datas">
+      <label>De<input type="date" id="pop-de" value="${esc(POP.de)}"></label>
+      <label>Até<input type="date" id="pop-ate" value="${esc(POP.ate)}"></label>
+      ${POP.de || POP.ate ? `<button type="button" data-acao="pop-limpar-datas">Limpar</button>` : ""}
+    </div>` : ""}
+    <p class="rotulo" style="margin:0 4px">${L.length} ${nomeKpi}${asc ? " · mais antigas primeiro" : " · mais recentes primeiro"}${POP.carregandoLista ? " · carregando…" : ""}</p>
+    ${L.length ? L.slice(0, POP.mostrar).map(item).join("") : `<section class="cartao"><p style="margin:0;font-weight:600">${POP.kpi === "pend" ? "Nenhuma pendência. Bom trabalho!" : "Nada encontrado."}</p></section>`}
+    ${L.length > POP.mostrar ? `<button type="button" class="botao-sec" data-acao="pop-mais">Mostrar mais ${Math.min(60, L.length - POP.mostrar)}</button>` : ""}
+    <div class="pop-rodape">${I.relogioP}<span>A partir do ${DIAS_ESTORNO}º dia a venda é estornada e descontada em vale.${POP.lote ? ` Auditoria até ${dataBR(POP.lote.data)}.` : ""}</span></div>`);
+}
+
+function telaPopularDetalhe(chave) {
+  const base = [...(POP.lista || []), ...POP.pend];
+  const c = base.find((x) => x.chave === chave);
+  if (!c) {
+    if (!POP.lista && !POP.carregandoLista && POP.carregado) carregarListaPopular(true);
+    return moldura("popular", "Farmácia Popular", "", `<section class="cartao"><p style="margin:0;font-weight:600">${POP.carregandoLista ? "Carregando…" : "Atendimento não encontrado."}</p><a href="#/popular">Voltar à lista</a></section>`);
+  }
+  if (POP.detalhe?.chave !== chave) {
+    POP.detalhe = { chave, itens: null, hist: null, erro: null };
+    POP.msg = null;
+    carregarDetalhe(c);
+  }
+  const det = POP.detalhe;
+  const gestor = !!estado.perfil?.gestor;
+  const campo = (r, v) => `<div class="pop-campo-det"><span class="rotulo">${r}</span><span>${v === "" || v == null ? "—" : v}</span></div>`;
+  const simnao = (v) => (v === true ? "ok" : v === false ? "irregular" : "—");
+  const NC = { status_manual: "Status", situacao: "Revisão", obs_manual: "Observação" };
+  let acao = "";
+  if (popPendente(c) || (gestor && c.situacao === "VALIDADO")) {
+    if (gestor) {
+      acao = `
+        <section class="cartao">
+          <h2 style="margin:0">Ação do gestor</h2>
+          ${popRevisao(c) ? `<div class="pop-caixa">Revisão solicitada${c.obs_manual ? `: “${esc(c.obs_manual)}”` : ""}</div>` : ""}
+          <label class="pop-label">Motivo / observação (fica no histórico)<textarea id="pop-motivo" rows="2" maxlength="300"></textarea></label>
+          <div class="pop-botoes">
+            ${c.situacao !== "VALIDADO" ? `<button type="button" class="pop-bt-ok" data-pop-validar="${esc(c.chave)}" ${POP.salvando ? "disabled" : ""}>Validar (encerrar)</button>` : ""}
+            <button type="button" class="pop-bt-manter" data-pop-manter="${esc(c.chave)}" ${POP.salvando ? "disabled" : ""}>${c.situacao === "VALIDADO" ? "Reabrir pendência" : "Manter pendente"}</button>
+          </div>
+          ${POP.msg ? `<p class="nota" role="status" style="font-size:13px;font-weight:700">${esc(POP.msg)}</p>` : ""}
+        </section>`;
+    } else if (popRevisao(c)) {
+      acao = `
+        <section class="cartao">
+          <h2 style="margin:0">Revisão do gestor</h2>
+          <div class="pop-caixa">Você já pediu revisão${c.obs_manual ? `: “${esc(c.obs_manual)}”` : ""}. Aguarde o gestor.</div>
+          <button type="button" class="pop-bt-manter" data-acao="pop-cancelar" ${POP.salvando ? "disabled" : ""}>Cancelar pedido</button>
+          ${POP.msg ? `<p class="nota" role="status" style="font-size:13px;font-weight:700">${esc(POP.msg)}</p>` : ""}
+        </section>`;
+    } else {
+      acao = `
+        <section class="cartao">
+          <h2 style="margin:0">Solicitar revisão do gestor</h2>
+          <p class="nota" style="font-size:13px;margin:0">Use <b>somente</b> se o atendimento está pendente por engano (o lançamento está certo ou já foi corrigido no RegularizaFarma). Pendência de verdade se resolve no aplicativo de lançamento.</p>
+          <label class="pop-label">Por que não deveria estar pendente?<textarea id="pop-obs" rows="3" maxlength="500"></textarea></label>
+          <button type="button" class="botao" data-acao="pop-revisao" ${POP.salvando ? "disabled" : ""}>Solicitar revisão do gestor</button>
+          ${POP.msg ? `<p class="nota" role="status" style="font-size:13px;font-weight:700;color:var(--erro)">${esc(POP.msg)}</p>` : ""}
+        </section>`;
+    }
+  }
+  return moldura("popular", `Cupom ${esc(c.coo)}`, `<a href="#/popular" class="pop-voltar">${I.voltar}Farmácia Popular</a>`, `
+    <section class="cartao">
+      <div class="pop-pills">${seloStatus(c)}${seloDias(c)}${popRevisao(c) ? `<span class="pill st-rev">Revisão solicitada</span>` : ""}${c.situacao === "VALIDADO" ? `<span class="pill st-ok">Validado</span>` : ""}${c.duplicado ? `<span class="pill dias-amarelo">${c.qtd_auditorias || 2} lançamentos na auditoria</span>` : ""}</div>
+      ${popPendencia(c) ? `<div class="pop-caixa erro"><b>Pendência apontada:</b> ${esc(popPendencia(c))}</div>` : ""}
+      ${c.duplicado ? `<div class="pop-caixa">Atendimento lançado mais de uma vez: excluir o excedente no RegularizaFarma.</div>` : ""}
+      <div class="pop-grade">
+        ${campo("Cliente", esc(c.cliente))}${campo("CPF", esc(c.cpf))}
+        ${campo("Autorização (AUTMS)", `<b class="selecionavel">${esc(c.autms)}</b>`)}${campo("Telefone", c.telefone ? `<a href="tel:${soDigitos(c.telefone)}">${esc(telefone(c.telefone))}</a>` : "")}
+        ${campo(c.vendedor_generico ? "Atendente (pela auditoria)" : "Vendedor", esc(c.vendedor))}
+        ${c.vendedor_generico ? campo("Usuário da venda", esc(c.vendedor_venda || "genérico") + " · cobrar login pessoal") : campo("Loja", esc(c.loja || (c.filial ? "Filial " + c.filial : "")))}
+        ${campo("Data da venda", esc(c.data_hora ? new Date(c.data_hora).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : dataBR(c.data)))}
+        ${campo("Subsidiado", c.subsidiado != null ? brl(c.subsidiado, 2) : "")}
+        ${campo("Receita", simnao(c.receita))}${campo("Doc. beneficiário", simnao(c.doc_benef))}
+        ${campo("Cupom vinculado", simnao(c.cupom_vinc))}${campo("Lote da auditoria", c.lote ? esc(c.lote) : "")}
+      </div>
+    </section>
+    ${acao}
+    <section class="cartao lista-prod">
+      <h2>Itens da venda</h2>
+      ${det.erro ? `<p class="nota">${esc(det.erro)}</p>` : det.itens == null ? `<p class="nota">Carregando…</p>`
+        : det.itens.length ? det.itens.map((i) => `<div class="prod"><div class="prod-nome">${esc(i.produto)}<span class="nota">qtde ${esc(i.qtde)}</span></div><strong>${brl(i.subsidiado, 2)}</strong></div>`).join("")
+        : `<p class="nota">Sem itens.</p>`}
+    </section>
+    <section class="cartao lista-prod">
+      <h2>Histórico</h2>
+      ${det.hist == null ? `<p class="nota">${det.erro ? "" : "Carregando…"}</p>` : det.hist.length ? det.hist.map((h) => `
+        <div class="prod"><div class="prod-nome" style="font-weight:600">${esc(NC[h.campo] || h.campo)}: ${esc(SIT_POP[h.valor_antes] || h.valor_antes || "vazio")} → <b>${esc(SIT_POP[h.valor_depois] || h.valor_depois || "vazio")}</b>
+          <span class="nota">${h.em ? new Date(h.em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : ""} · ${esc(h.usuario_nome || (h.usuario_codigo ? "cód. " + h.usuario_codigo : h.origem || ""))}${h.motivo ? " · " + esc(h.motivo) : ""}</span></div></div>`).join("")
+        : `<p class="nota">Nenhuma alteração registrada.</p>`}
+    </section>`);
+}
+
+async function carregarDetalhe(c) {
+  try {
+    let det;
+    if (DEMO) det = { itens: [{ produto: "LOSARTANA POTASSICA 50MG 30 COMP", qtde: 2, subsidiado: 9.18 }], hist: popRevisao(c) ? [{ em: new Date().toISOString(), campo: "situacao", valor_antes: "PENDENTE", valor_depois: "REVISAO", usuario_nome: c.vendedor, motivo: null }] : [] };
+    else {
+      const { data, error } = await sb.rpc("popular_detalhe", { p_chave: c.chave });
+      if (error) throw error;
+      det = data || { itens: [], hist: [] };
+    }
+    if (POP.detalhe?.chave === c.chave) Object.assign(POP.detalhe, { itens: det.itens || [], hist: det.hist || [] });
+  } catch (ex) {
+    if (POP.detalhe?.chave === c.chave) POP.detalhe.erro = ex?.message || "Não foi possível carregar.";
+  }
+  if (rotaAtual().startsWith("popular/")) render();
+}
+
+async function popEditar(chave, args, okMsg) {
+  POP.salvando = true; POP.msg = "Salvando…"; render();
+  try {
+    if (DEMO) {
+      const alvo = [...(POP.lista || []), ...POP.pend].filter((x) => x.chave === chave);
+      alvo.forEach((x) => { if (args.p_situacao) x.situacao = args.p_situacao; if (args.p_obs != null) x.obs_manual = args.p_obs || null; });
+    } else {
+      const { error } = await sb.rpc("popular_editar", { p_chave: chave, p_status: null, p_situacao: null, p_obs: null, p_motivo: null, ...args });
+      if (error) throw error;
+      const { data } = await sb.rpc("popular_minhas_pendencias");
+      POP.pend = (data || []).filter((c) => c.origem !== "AUDITORIA");
+      if (POP.lista) { const r = await sb.rpc("popular_painel_usuario"); if (!r.error) POP.lista = (r.data || []).filter((c) => c.origem !== "AUDITORIA"); }
+    }
+    if (DEMO) POP.pend = (POP.lista || []).filter(popPendente).sort((a, b) => a.data.localeCompare(b.data));
+    POP.msg = okMsg;
+    if (POP.detalhe?.chave === chave) { POP.detalhe = null; POP.msgFixa = okMsg; }
+  } catch (ex) {
+    POP.msg = ex?.message || "Não foi possível salvar.";
+  } finally {
+    POP.salvando = false;
+    render();
+    if (POP.msgFixa) { POP.msg = POP.msgFixa; POP.msgFixa = null; render(); }
+  }
+}
+
+// ---- aviso ao entrar (1x por dia, só com pendência) --------------------------
+function popAvisoHTML() {
+  if (!POP.aviso) return "";
+  const meus = popMeus();
+  const porDia = {};
+  meus.forEach((c) => { const d = popDias(c) ?? 0; porDia[d] = (porDia[d] || 0) + 1; });
+  const dias = Object.keys(porDia).map(Number).sort((a, b) => b - a);
+  const venc = meus.filter((c) => (popDias(c) ?? 0) >= DIAS_ESTORNO).length;
+  return `
+    <div class="pop-fundo" role="presentation">
+      <section class="pop-dialogo" role="dialog" aria-modal="true" aria-labelledby="pop-aviso-tit">
+        <span class="pop-sobre">FARMÁCIA POPULAR</span>
+        <div class="pop-num"><span>${meus.length}</span><strong id="pop-aviso-tit">atendimento${meus.length > 1 ? "s" : ""} pendente${meus.length > 1 ? "s" : ""}<br>no seu usuário</strong></div>
+        <table class="pop-tab"><thead><tr><th>Dias de atraso</th><th>Atendimentos</th></tr></thead><tbody>
+          ${dias.map((d) => `<tr><td class="${d >= DIAS_ESTORNO ? "t-vermelho" : d >= DIAS_ESTORNO - 2 ? "t-amarelo" : ""}">${d} dia${d === 1 ? "" : "s"}${d >= DIAS_ESTORNO ? " ⚠" : ""}</td><td>${porDia[d]}</td></tr>`).join("")}
+        </tbody></table>
+        <div class="pop-estorno ${venc ? "pisca" : ""}">⚠ A partir do ${DIAS_ESTORNO}º dia de atraso a venda será ESTORNADA e DESCONTADA EM VALE.${venc ? `<br><span>Você já tem ${venc} atendimento${venc > 1 ? "s" : ""} nessa situação.</span>` : ""}</div>
+        <div class="pop-botoes" style="justify-content:flex-end">
+          <button type="button" class="pop-bt-depois" data-acao="pop-aviso-fechar">Depois</button>
+          <button type="button" class="botao" style="height:44px;font-size:15px;padding:0 20px" data-acao="pop-aviso-ver">Ver pendências</button>
+        </div>
+      </section>
+    </div>`;
+}
+function popTalvezAviso() {
+  if (!POP.carregado || estado.perfil?.gestor || !popMeus().length) return;
+  const chave = `popular_aviso_${estado.perfil?.codigo}`;
+  const hoje = new Date().toISOString().slice(0, 10);
+  let visto = null;
+  try { visto = localStorage.getItem(chave); } catch (e) { /* sem armazenamento: mostra */ }
+  if (visto === hoje) return;
+  try { localStorage.setItem(chave, hoje); } catch (e) { /* ignora */ }
+  POP.aviso = true;
+}
+
+// ---- demonstração --------------------------------------------------------------
+function popularExemplo() {
+  const hoje = new Date();
+  const dia = (n) => new Date(hoje.getTime() - n * 86400000).toISOString().slice(0, 10);
+  const gestor = new URLSearchParams(location.search).has("gestor");
+  const nomes = ["Vendedor Exemplo", "Vendedor A", "Vendedor B", "Vendedor C"];
+  const L = [];
+  const add = (cod0, n, status, extra = {}) => { const cod = gestor && cod0 === 0 ? 4 : cod0; L.push({
+    chave: `V:1-${9000 + L.length}`, origem: "VENDA", filial: 1, loja: "Matriz", coo: 327400 + L.length * 13, data: dia(n),
+    autms: String(88120000 + L.length * 7), cod_vendedor: cod, vendedor: nomes[cod] || "Vendedor", cliente: ["JOSÉ A. PEREIRA", "ANA C. LIMA", "PEDRO H. SANTOS", "LUCIA M. ROCHA", "MARIA DAS GRAÇAS", "JOÃO B. SOUZA"][L.length % 6],
+    cpf: "123.456.789-0" + (L.length % 10), telefone: "38999" + String(100000 + L.length * 37).slice(0, 6), subsidiado: 9.18 + L.length,
+    status, situacao: status === "CORRETO" ? null : "PENDENTE", dias_em_aberto: status === "CORRETO" ? null : n,
+    obs_ia: { INCORRETO: "Receita com data fora da validade", VERIFICAR: "CPF da receita diferente do beneficiário" }[status] || null,
+    receita: status !== "INCORRETO", doc_benef: true, cupom_vinc: true, lote: 30, ...extra, vendedor: nomes[cod0] || "Vendedor" }); };
+  add(0, 7, "INCORRETO"); add(0, 5, "NÃO LANÇADO"); add(0, 3, "VERIFICAR"); add(0, 1, "INCORRETO", { situacao: "REVISAO", obs_manual: "Receita conferida, está dentro do prazo." });
+  for (let i = 0; i < 10; i++) add(0, 2 + i, "CORRETO");
+  add(0, 4, "CORRETO", { duplicado: true, qtd_auditorias: 2 });
+  add(1, 8, "INCORRETO"); add(1, 2, "VERIFICAR", { situacao: "REVISAO", obs_manual: "CPF conferido com o documento do paciente." });
+  add(2, 6, "NÃO LANÇADO", { vendedor_generico: true, vendedor_venda: "POPULAR MATRIZ" });
+  for (let i = 0; i < 6; i++) add(1 + (i % 3), 1 + i, "CORRETO");
+  return gestor ? L : L.filter((c) => c.cod_vendedor === 0);
+}
+
+// ---------------------------------------------------------------------------
 // Telas de entrada
 // ---------------------------------------------------------------------------
 function telaLogin(erro = "") {
@@ -1289,7 +1763,7 @@ function telaPrimeiroAcesso(erro = "") {
 // ---------------------------------------------------------------------------
 // Navegação
 // ---------------------------------------------------------------------------
-const TELAS = { mes: telaMes, indicadores: telaIndicadores, vender: telaVender, premio: telaPremio, ranking: telaRanking, equipe: telaEquipe, gestao: telaGestao, assistente: telaAssistente };
+const TELAS = { mes: telaMes, indicadores: telaIndicadores, vender: telaVender, premio: telaPremio, ranking: telaRanking, equipe: telaEquipe, gestao: telaGestao, assistente: telaAssistente, popular: telaPopular };
 const SO_GESTOR = new Set(["equipe", "gestao", "assistente"]);
 
 function rotaAtual() {
@@ -1306,7 +1780,7 @@ function render() {
   // gestor vendo um vendedor: #/v/<codigo>/<mes|indicadores|premio>
   const m = rota.match(/^v\/(\d+)\/(mes|indicadores|premio)$/);
   VER = m && estado.perfil?.gestor && membro(Number(m[1])) ? Number(m[1]) : null;
-  const nome = m && VER != null ? m[2] : rota;
+  const nome = m && VER != null ? m[2] : rota.split("/")[0];
   const padrao = estado.perfil?.gestor ? TELAS.equipe : TELAS.mes;
   const tela = (SO_GESTOR.has(nome) && !estado.perfil?.gestor) ? TELAS.mes : TELAS[nome] || padrao;
   app.innerHTML = tela();
@@ -1315,11 +1789,12 @@ function render() {
 }
 
 async function entrar(codigo, senha) {
-  if (DEMO) { estado.logado = true; await carregarDados(); location.hash = estado.perfil?.gestor ? "#/equipe" : "#/mes"; render(); return null; }
+  if (DEMO) { estado.logado = true; await carregarDados(); popTalvezAviso(); location.hash = estado.perfil?.gestor ? "#/equipe" : "#/mes"; render(); return null; }
   const { error } = await sb.auth.signInWithPassword({ email: emailDo(codigo), password: senha });
   if (error) return traduzErroLogin(error.message);
   estado.logado = true;
   await carregarDados();
+  popTalvezAviso();
   location.hash = estado.perfil?.gestor ? "#/equipe" : "#/mes";
   render();
   return null;
@@ -1393,6 +1868,7 @@ app.addEventListener("click", async (e) => {
     return;
   }
   if (e.target.closest("[data-acao=trocar-mes]")) { trocarMes(); return; }
+  if (clicarPopular(e)) return;
   const seg = e.target.closest("[data-gestao-aba]");
   if (seg) { estado.gestaoAba = seg.dataset.gestaoAba; render(); return; }
   const semE = e.target.closest("[data-escala-semana]");
@@ -1411,12 +1887,64 @@ app.addEventListener("click", async (e) => {
   if (e.target.closest("[data-acao=sair]")) {
     if (!DEMO && sb) await sb.auth.signOut();
     Object.assign(estado, { logado: false, perfil: null, dados: null, ranking: [], gestao: null, equipe: [], anterior: false, snapAtual: null, snapAnterior: null });
+    Object.assign(POP, { carregado: false, pend: [], lista: null, detalhe: null, aviso: false, busca: "", de: "", ate: "", kpi: "pend", msg: null });
     location.hash = "#/login";
     render();
   }
 });
 
 window.addEventListener("hashchange", render);
+// busca e datas da tela Farmácia Popular (redesenha mantendo o cursor no campo)
+let popTimer = null;
+app.addEventListener("input", (e) => {
+  if (e.target.id !== "pop-q") return;
+  POP.busca = e.target.value; POP.mostrar = 60;
+  clearTimeout(popTimer);
+  popTimer = setTimeout(() => {
+    const pos = e.target.selectionStart;
+    render(); window.scrollTo(0, 0);
+    const q = document.getElementById("pop-q");
+    if (q) { q.focus(); try { q.setSelectionRange(pos, pos); } catch (er) { /* ignora */ } }
+  }, 250);
+});
+app.addEventListener("change", (e) => {
+  if (e.target.id === "pop-de") { POP.de = e.target.value; render(); }
+  if (e.target.id === "pop-ate") { POP.ate = e.target.value; render(); }
+});
+function clicarPopular(e) {
+  const alvo = (sel) => e.target.closest(sel);
+  const manter = () => { const y = window.scrollY; render(); window.scrollTo(0, y); };
+  let x;
+  if ((x = alvo("[data-pop-kpi]"))) { POP.kpi = x.dataset.popKpi; POP.mostrar = 60; manter(); return true; }
+  if ((x = alvo("[data-pop-ordem]"))) { POP.ordemEquipe = x.dataset.popOrdem; manter(); return true; }
+  if (alvo("[data-acao=pop-datas]")) { POP.verDatas = !POP.verDatas; manter(); return true; }
+  if (alvo("[data-acao=pop-limpar-datas]")) { POP.de = ""; POP.ate = ""; manter(); return true; }
+  if (alvo("[data-acao=pop-mais]")) { POP.mostrar += 60; manter(); return true; }
+  if (alvo("[data-acao=pop-aviso-fechar]")) { POP.aviso = false; manter(); return true; }
+  if (alvo("[data-acao=pop-aviso-ver]")) { POP.aviso = false; POP.kpi = "pend"; location.hash = "#/popular"; render(); return true; }
+  const chaveDet = () => decodeURIComponent(rotaAtual().slice(8));
+  if (alvo("[data-acao=pop-revisao]")) {
+    const t = (document.getElementById("pop-obs")?.value || "").trim();
+    if (!t) { POP.msg = "Explique por que o atendimento não deveria estar pendente."; manter(); return true; }
+    popEditar(chaveDet(), { p_situacao: "REVISAO", p_obs: t }, "Pedido de revisão enviado ao gestor.");
+    return true;
+  }
+  if (alvo("[data-acao=pop-cancelar]")) {
+    popEditar(chaveDet(), { p_situacao: "PENDENTE", p_obs: "", p_motivo: "Pedido de revisão cancelado pelo colaborador" }, "Pedido cancelado.");
+    return true;
+  }
+  if ((x = alvo("[data-pop-validar]"))) {
+    const mot = (document.getElementById("pop-motivo")?.value || "").trim();
+    popEditar(x.dataset.popValidar, { p_situacao: "VALIDADO", p_motivo: mot || "Revisão aceita pelo gestor" }, "Validado.");
+    return true;
+  }
+  if ((x = alvo("[data-pop-manter]"))) {
+    const mot = (document.getElementById("pop-motivo")?.value || "").trim();
+    popEditar(x.dataset.popManter, { p_situacao: "PENDENTE", p_motivo: mot || "Revisão recusada: mantida pendente" }, "Mantida pendente.");
+    return true;
+  }
+  return false;
+}
 app.addEventListener("keydown", (e) => {
   if (e.target.id === "pergunta-ia" && e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
@@ -1446,6 +1974,7 @@ setInterval(atualizar, 5 * 60 * 1000);
       if (data.session) {
         estado.logado = true;
         await carregarDados();
+        popTalvezAviso();
       }
     }
   } catch (ex) {
