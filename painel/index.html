@@ -205,6 +205,19 @@ async function api(caminho, {metodo = "GET", corpo} = {}) {
   if (!r.ok) throw new Error((js && (js.message || js.error_description || js.hint)) || `Erro ${r.status}`);
   return js;
 }
+// busca todas as linhas de uma função em páginas de 1000 (limite do Supabase por consulta).
+// Usa ?limit=&offset= (sem cabeçalho Range, que o navegador pode barrar) e a ordem fixa da função
+// (data desc, coo desc, chave) para as páginas não repetirem nem pularem linhas.
+async function apiTodas(caminho, corpo) {
+  const PAG = 1000, todas = [];
+  for (let ini = 0; ini < 500000;) {
+    const js = await api(`${caminho}?limit=${PAG}&offset=${ini}`, {metodo: "POST", corpo: corpo || {}}) || [];
+    if (!js.length) break;
+    todas.push(...js);
+    ini += js.length;          // avança pelo que veio de fato (o servidor pode devolver menos de 1000)
+  }
+  return todas;
+}
 async function autenticar(corpo, tipo) {
   const r = await fetch(`${URLB}/auth/v1/token?grant_type=${tipo}`, {method: "POST",
     headers: {apikey: ANON, "Content-Type": "application/json"}, body: JSON.stringify(corpo)});
@@ -276,7 +289,7 @@ async function carregar(silencioso) {
       infoLote = window.DEMO_DADOS?.lotes || null;
     } else {
       const [linhas, lotes] = await Promise.all([
-        api("rpc/popular_painel_usuario", {metodo: "POST", corpo: {}}),
+        apiTodas("rpc/popular_painel_usuario"),
         api("popular_lotes?select=lote,data_auditoria&order=lote.desc&limit=1"),
       ]);
       D = linhas; infoLote = lotes[0] ? {ultimo: lotes[0].lote, data: lotes[0].data_auditoria} : null;
@@ -467,7 +480,7 @@ async function salvar(c, args) {
   if ($("eBtn")) $("eBtn").disabled = true; if ($("eMsg")) $("eMsg").textContent = "Salvando…";
   try {
     if (DEMO) demoSalvar(c, corpo); else await api("rpc/popular_editar", {metodo: "POST", corpo});
-    if (!DEMO) { const linhas = await api("rpc/popular_painel_usuario", {metodo: "POST", corpo: {}}); D = linhas; }
+    if (!DEMO) { const linhas = await apiTodas("rpc/popular_painel_usuario"); D = linhas; }
     render(); toast(corpo.p_situacao === "REVISAO" ? "Pedido de revisão enviado ao gestor." : "Alteração salva.");
     abrir(c.chave);
   } catch (e) { if ($("eMsg")) $("eMsg").innerHTML = `<span class="erro">${esc(e.message)}</span>`; if ($("eBtn")) $("eBtn").disabled = false; }
