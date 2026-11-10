@@ -778,7 +778,7 @@ function telaEquipe() {
   const liberadas = eq.filter((m) => m.dados.premiacao?.liberada);
   const totPremio = liberadas.reduce((a, m) => a + (m.dados.premiacao.valor_hoje || 0), 0);
   const porPopular = POP.carregado && POP.ordemEquipe === "popular";
-  const ordem = [...eq].sort((a, b) => (porPopular ? popQtdMembro(b.codigo) - popQtdMembro(a.codigo) : 0) || (b.dados.pct_meta || 0) - (a.dados.pct_meta || 0));
+  const ordem = [...eq].sort((a, b) => (porPopular ? popQtdMembro(b.codigo) - popQtdMembro(a.codigo) || popVencMembro(b.codigo) - popVencMembro(a.codigo) : 0) || (b.dados.pct_meta || 0) - (a.dados.pct_meta || 0));
   const linha = (m) => {
     const d = m.dados, p = d.premiacao || {};
     const cor = d.pct_meta >= 1 ? "var(--verde)" : d.pct_meta > 0.7 ? "var(--azul)" : "var(--ouro)";
@@ -1131,7 +1131,7 @@ function telaGestao() {
   if (!g) return moldura("gestao", "Gestão", "", `<section class="cartao"><p style="margin:0;font-weight:600">Os números de gestão aparecem depois da próxima sincronização (o sincronizador precisa estar atualizado e a tabela "gestao" criada no banco).</p></section>`);
   const abas = [["vendas", "Vendas"], ["estoque", "Estoque"], ["financeiro", "Caixa"], ["escala", "Escala"], ["alertas", "Alertas"]];
   const qtdAlertas = (g.notas_pendentes?.total || 0) + (g.rupturas?.maiores?.filter((x) => x.curva === "A").length || 0)
-    + (POP.carregado ? POP.pend.filter(popRevisao).length + POP.pend.filter((c) => (popDias(c) ?? 0) >= DIAS_ESTORNO).length : 0);
+    + (POP.carregado ? n0(POP.alertas?.revisao) + n0(POP.alertas?.vencidos) : 0);
   if (estado.anterior) {
     return moldura("gestao", "Gestão", `Mês fechado · ${esc(g.mes || "")}`, `
       <p class="nota" style="margin:0 4px">No mês anterior aparecem as vendas, metas e lucratividade por loja. Estoque, caixa e alertas são sempre de hoje.</p>
@@ -1258,10 +1258,15 @@ function equipeExemplo() {
 // genérico), selo na aba Gestão e chip de pendências na Equipe.
 // ---------------------------------------------------------------------------
 const DIAS_ESTORNO = CFG.DIAS_ESTORNO_POPULAR || 7;
+let popUltimaAtualizacao = 0;
 const POP = {
   carregado: false,      // false = recursos desligados (banco sem as funções popular_*)
   pend: [],              // pendências que o usuário enxerga (popular_minhas_pendencias)
-  lista: null,           // todos os atendimentos que o usuário enxerga (carregado sob demanda)
+  pendCarregada: false, carregandoPend: false,
+  equipe: new Map(),     // popular_resumo_equipe: cod_vendedor -> {pendentes, vencidos, total, corretos, ...}
+  alertas: null,         // popular_resumo_alertas: {total, corretos, pendentes, duplicados, vencidos, revisao, sem_atendente}
+  faltaResumo: false,    // funções de resumo não instaladas no banco
+  lista: null,           // todos os atendimentos que o usuário enxerga (carregado sob demanda, paginado)
   carregandoLista: false,
   lote: null,            // { data, lote } da última auditoria importada
   kpi: "pend", busca: "", de: "", ate: "", verDatas: false, mostrar: 60,
@@ -1272,7 +1277,9 @@ const ST_POP = {
   "CORRETO": "ok", "INCORRETO": "erro", "VERIFICAR": "atencao", "NÃO LANÇADO": "neutro", "VENDA CANCELADA": "erro",
 };
 const SIT_POP = { REVISAO: "Revisão solicitada", CORRIGIDO: "Revisão solicitada", VALIDADO: "Validado", PENDENTE: "Pendente" };
-const popPendente = (c) => c.situacao != null && c.situacao !== "VALIDADO";
+// regra: INCORRETO, VERIFICAR, NÃO LANÇADO ou VENDA CANCELADA, e situação diferente de VALIDADO
+const PEND_STATUS = new Set(["INCORRETO", "VERIFICAR", "NÃO LANÇADO", "VENDA CANCELADA"]);
+const popPendente = (c) => PEND_STATUS.has(c.status) && c.situacao !== "VALIDADO";
 const popDias = (c) => (c.dias_em_aberto == null ? null : Number(c.dias_em_aberto));
 const popRevisao = (c) => c.situacao === "REVISAO" || c.situacao === "CORRIGIDO";
 const dataBR = (iso) => (iso ? String(iso).slice(0, 10).split("-").reverse().join("/") : "");
@@ -1307,136 +1314,221 @@ function seloDias(c) {
 }
 const seloStatus = (c) => `<span class="pill st-${ST_POP[c.status] || "neutro"}">${esc(c.status)}</span>`;
 
+// ---- acesso ao banco ------------------------------------------------------------
+// Contagens: SEMPRE pelas funções de resumo (o banco conta; nada de baixar linhas para contar).
+// Listas (quando a tela precisa das linhas): paginadas de 1000 em 1000 (Range-Unit / Range).
+const popArgsResumo = () => (DIAS_ESTORNO === 7 ? {} : { p_dias_estorno: DIAS_ESTORNO });
+const umaLinha = (d) => (Array.isArray(d) ? d[0] || null : d || null);
+const n0 = (v) => Number(v || 0);
+
+async function popRpcPaginado(fn) {
+  const { data: { session } } = await sb.auth.getSession();
+  const token = session?.access_token || CFG.SUPABASE_ANON_KEY;
+  const saida = [];
+  for (let ini = 0; ini < 500000; ini += 1000) {
+    const r = await fetch(`${CFG.SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+      method: "POST",
+      headers: { apikey: CFG.SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json",
+                 "Range-Unit": "items", Range: `${ini}-${ini + 999}` },
+      body: "{}",
+    });
+    if (r.status === 416) break; // pediu além do fim: acabou
+    if (!r.ok) {
+      const t = await r.text();
+      const e = new Error(`${fn}: ${r.status} ${t.slice(0, 200)}`);
+      e.status = r.status;
+      throw e;
+    }
+    const parte = await r.json();
+    saida.push(...parte);
+    if (parte.length < 1000) break;
+  }
+  return saida.filter((c) => c.origem !== "AUDITORIA");
+}
+
+// totais do banco: por colaborador (equipe) e geral (alertas)
+async function popCarregarResumos() {
+  if (DEMO) { Object.assign(POP, popResumosDe(POP.lista || [])); return; }
+  const [eq, al] = await Promise.all([sb.rpc("popular_resumo_equipe", popArgsResumo()), sb.rpc("popular_resumo_alertas", popArgsResumo())]);
+  for (const r of [eq, al]) {
+    if (r.error) {
+      const e = new Error(r.error.message || "erro");
+      e.faltaFuncao = r.status === 404 || r.error.code === "PGRST202" || r.error.code === "42883";
+      throw e;
+    }
+  }
+  POP.equipe = new Map((eq.data || []).map((x) => [x.cod_vendedor == null ? null : Number(x.cod_vendedor), x]));
+  POP.alertas = umaLinha(al.data) || {};
+  POP.resumoEm = Date.now();
+}
+
+async function popCarregarPend() {
+  if (DEMO) return;
+  POP.carregandoPend = true;
+  try {
+    POP.pend = (await popRpcPaginado("popular_minhas_pendencias"))
+      .sort((a, b) => String(a.data).localeCompare(String(b.data)) || Number(a.coo) - Number(b.coo));
+    POP.pendCarregada = true;
+  } finally { POP.carregandoPend = false; }
+}
+
 async function carregarPopular() {
   if (DEMO) {
     const ex = popularExemplo();
-    Object.assign(POP, { carregado: true, pend: ex.filter(popPendente).sort((a, b) => a.data.localeCompare(b.data)), lista: ex,
-      lote: { data: "2026-11-06", lote: 31 } });
+    Object.assign(POP, { carregado: true, lista: ex, pendCarregada: true, lote: { data: "2026-11-06", lote: 31 },
+      pend: ex.filter(popPendente).sort((a, b) => a.data.localeCompare(b.data)) }, popResumosDe(ex));
     return;
   }
   try {
-    const { data, error } = await sb.rpc("popular_minhas_pendencias");
-    if (error) throw error;
-    POP.pend = (data || []).filter((c) => c.origem !== "AUDITORIA");
+    await popCarregarResumos();
     POP.carregado = true;
-    const { data: lt } = await sb.from("popular_lotes").select("lote,data_auditoria").order("data_auditoria", { ascending: false }).limit(1).maybeSingle()
-      .then((r) => r, () => ({ data: null }));
-    POP.lote = lt ? { data: lt.data_auditoria, lote: lt.lote } : null;
-    // gestor: a lista completa alimenta duplicados e usuário genérico (em segundo plano)
-    if (estado.perfil?.gestor || POP.lista) carregarListaPopular(false);
+    POP.faltaResumo = false;
+    popUltimaAtualizacao = Date.now();
   } catch (ex) {
-    POP.carregado = false; // funções ainda não instaladas: o app segue sem a Farmácia Popular
+    POP.carregado = false; // sem as funções o app segue sem a Farmácia Popular
+    POP.faltaResumo = !!ex.faltaFuncao;
     console.info("Farmácia Popular indisponível:", ex?.message || ex);
+    return;
   }
+  // colaborador: as linhas das próprias pendências (cartão, aviso e tela); gestor: só quando abre a tela
+  try {
+    if (!estado.perfil?.gestor || POP.pendCarregada) await popCarregarPend();
+  } catch (ex) { console.warn("Pendências Farmácia Popular", ex); }
+  const { data: lt } = await sb.from("popular_lotes").select("lote,data_auditoria").order("data_auditoria", { ascending: false }).limit(1).maybeSingle()
+    .then((r) => r, () => ({ data: null }));
+  POP.lote = lt ? { data: lt.data_auditoria, lote: lt.lote } : POP.lote;
+  if (POP.lista) carregarListaPopular(false); // a lista completa só é mantida se alguém já abriu
 }
 
+// lista completa (Total / Corretos / Duplicados / Usuário genérico) — só ao abrir esses filtros
 async function carregarListaPopular(redesenhar = true) {
   if (DEMO || POP.carregandoLista) return;
   POP.carregandoLista = true;
   try {
-    const { data, error } = await sb.rpc("popular_painel_usuario");
-    if (error) throw error;
-    POP.lista = (data || []).filter((c) => c.origem !== "AUDITORIA");
+    POP.lista = await popRpcPaginado("popular_painel_usuario");
   } catch (ex) {
     console.warn("Lista Farmácia Popular", ex);
     if (!POP.lista) POP.lista = [];
   } finally {
     POP.carregandoLista = false;
-    if (redesenhar || estado.perfil?.gestor) {
-      const r = rotaAtual();
-      if (r.startsWith("popular") || r === "gestao" || r === "indicadores" || r === "mes" || r === "equipe") render();
-    }
+    if (redesenhar && rotaAtual().startsWith("popular")) render();
   }
 }
 
-// mês corrente (para o % de corretos)
-const mesCorrente = () => new Date().toISOString().slice(0, 7);
-
-function popResumoMes(lista) {
-  const mes = (lista || []).filter((c) => String(c.data || "").startsWith(mesCorrente()));
-  const total = mes.length;
-  const corretos = mes.filter((c) => c.status === "CORRETO").length;
-  return { total, corretos, pct: total ? corretos / total : null };
+// gestor abrindo Alertas ou a tela: carrega as linhas das pendências (revisões etc.)
+function popGarantirPend() {
+  if (!POP.carregado || POP.pendCarregada || POP.carregandoPend || DEMO) return;
+  popCarregarPend().then(render, (ex) => { console.warn(ex); POP.pendCarregada = true; render(); });
 }
+
+// atualiza só os números da Farmácia Popular ao abrir/voltar para uma aba (sem recarregar o app)
+async function popAtualizar() {
+  if (!estado.logado || estado.anterior || DEMO || popAtualizar.rodando) return;
+  if (Date.now() - popUltimaAtualizacao < 20000) return;
+  popAtualizar.rodando = true;
+  popUltimaAtualizacao = Date.now();
+  const rota = rotaAtual();
+  try {
+    await popCarregarResumos();
+    POP.carregado = true;
+    if (!estado.perfil?.gestor || POP.pendCarregada) await popCarregarPend();
+    if (POP.lista && rota.startsWith("popular")) await carregarListaPopular(false);
+  } catch (ex) { console.warn("Atualizar Farmácia Popular", ex); }
+  finally { popAtualizar.rodando = false; }
+  if (rotaAtual() === rota) { const y = window.scrollY; render(); window.scrollTo(0, y); }
+}
+
+// números de um colaborador / do geral (vindos do banco)
+const popLinhaEquipe = (codigo) => POP.equipe.get(Number(codigo)) || { pendentes: 0, vencidos: 0, total: 0, corretos: 0, duplicados: 0 };
+const popEu = () => popLinhaEquipe(estado.perfil?.codigo);
 
 // ---- cartões em outras telas -----------------------------------------------
 function popAlertaMes() {
   if (!POP.carregado || VER != null || estado.anterior) return "";
-  const meus = popMeus();
-  if (!meus.length) {
+  const eu = popEu();
+  const pend = n0(eu.pendentes), venc = n0(eu.vencidos);
+  if (!pend) {
     if (!POP.lote) return "";
-    const r = popResumoMes(POP.lista);
-    return `<a class="cartao pop-ok" href="#/popular">${I.ok}<span>Farmácia Popular em dia · auditoria até <b>${dataBR(POP.lote.data)}</b>${r.total ? ` · ${r.corretos} de ${r.total} corretos no mês` : ""}</span></a>`;
+    return `<a class="cartao pop-ok" href="#/popular">${I.ok}<span>Farmácia Popular em dia · auditoria até <b>${dataBR(POP.lote.data)}</b>${n0(eu.total) ? ` · ${n0(eu.corretos)} de ${n0(eu.total)} corretos` : ""}</span></a>`;
   }
-  const venc = meus.filter((c) => (popDias(c) ?? 0) >= DIAS_ESTORNO).length;
   return `
     <a class="pop-alerta" href="#/popular">
       <span class="pop-alerta-ic">${I.alertaVermelho}</span>
-      <span class="pop-alerta-txt"><strong>Farmácia Popular: ${meus.length} pendência${meus.length > 1 ? "s" : ""}</strong>
-        <span>${venc ? `${venc} chegou ao ${DIAS_ESTORNO}º dia — será estornada` : "resolva antes do " + DIAS_ESTORNO + "º dia para não ter estorno"}</span></span>
+      <span class="pop-alerta-txt"><strong>Farmácia Popular: ${pend} pendência${pend > 1 ? "s" : ""}</strong>
+        <span>${venc ? `${venc} no ${DIAS_ESTORNO}º dia ou mais — ser${venc > 1 ? "ão" : "á"} estornada${venc > 1 ? "s" : ""}` : "resolva antes do " + DIAS_ESTORNO + "º dia para não ter estorno"}</span></span>
       <span aria-hidden="true">${I.seta}</span>
     </a>`;
 }
 
 function popCartaoIndicadores() {
   if (!POP.carregado || VER != null || estado.anterior) return "";
-  const r = popResumoMes(POP.lista);
-  const meus = popMeus();
+  const eu = popEu();
+  const total = n0(eu.total), corretos = n0(eu.corretos), pend = n0(eu.pendentes);
+  const p = total ? corretos / total : null;
   return `
     <section class="cartao pop-ind">
       <div class="linha-base"><h2 style="margin:0">Farmácia Popular</h2><span class="pill st-ok">+12% no prêmio</span></div>
       <div class="grade-2" style="gap:12px">
-        <div><span class="valor-m azul">${r.total}</span><span class="nota" style="display:block">atendimentos no mês</span></div>
-        <div><span class="valor-m verde">${r.pct == null ? "–" : pct(r.pct)}</span><span class="nota" style="display:block">corretos na auditoria</span></div>
+        <div><span class="valor-m azul">${total}</span><span class="nota" style="display:block">atendimentos auditados</span></div>
+        <div><span class="valor-m verde">${p == null ? "–" : pct(p)}</span><span class="nota" style="display:block">corretos na auditoria</span></div>
       </div>
-      <div class="barra fina"><div class="barra-cheia" style="width:${(r.pct || 0) * 100}%;background:var(--verde)"></div></div>
-      ${meus.length
-        ? `<a class="pop-link-erro" href="#/popular">${meus.length} pendência${meus.length > 1 ? "s" : ""} pode${meus.length > 1 ? "m" : ""} estornar vendas ${I.seta}</a>`
+      <div class="barra fina"><div class="barra-cheia" style="width:${(p || 0) * 100}%;background:var(--verde)"></div></div>
+      ${pend
+        ? `<a class="pop-link-erro" href="#/popular">${pend} pendência${pend > 1 ? "s" : ""} pode${pend > 1 ? "m" : ""} estornar vendas ${I.seta}</a>`
         : `<a class="pop-link" href="#/popular">Ver meus atendimentos ${I.seta}</a>`}
     </section>`;
 }
 
-// selo vermelho na aba (Meu Mês do colaborador; Gestão do gestor = revisões aguardando)
+// selo vermelho na aba (Meu Mês do colaborador = pendências; Gestão do gestor = revisões aguardando)
 function seloAba(id) {
   if (!POP.carregado || estado.anterior) return "";
   let n = 0;
-  if (id === "mes" && !estado.perfil?.gestor) n = popMeus().length;
-  if (id === "gestao" && estado.perfil?.gestor) n = POP.pend.filter(popRevisao).length;
+  if (id === "mes" && !estado.perfil?.gestor) n = n0(popEu().pendentes);
+  if (id === "gestao" && estado.perfil?.gestor) n = n0(POP.alertas?.revisao);
   return n ? `<span class="selo-aba" aria-label="${n} pendências">${n > 99 ? "99+" : n}</span>` : "";
 }
 
-// chip da equipe (gestor)
+// chip da equipe (gestor) — popular_resumo_equipe; sem linha = 0 pendências
 function popChipMembro(codigo) {
   if (!POP.carregado) return "";
-  const p = POP.pend.filter((c) => c.cod_vendedor === codigo);
-  if (!p.length) return `<span class="pill st-ok">Popular em dia</span>`;
-  const v = p.filter((c) => (popDias(c) ?? 0) >= DIAS_ESTORNO).length;
-  return `<span class="pill ${v ? "dias-vermelho" : "dias-amarelo"}">Popular: ${p.length} pend.${v ? ` · ${v} no ${DIAS_ESTORNO}º dia` : ""}</span>`;
+  const r = popLinhaEquipe(codigo);
+  const p = n0(r.pendentes), v = n0(r.vencidos);
+  if (!p) return `<span class="pill st-ok">Popular em dia</span>`;
+  return `<span class="pill dias-vermelho">Popular: ${p} pend.${v ? ` · ${v} no ${DIAS_ESTORNO}º dia` : ""}</span>`;
 }
-const popQtdMembro = (codigo) => POP.pend.filter((c) => c.cod_vendedor === codigo).length;
+const popQtdMembro = (codigo) => n0(popLinhaEquipe(codigo).pendentes);
+const popVencMembro = (codigo) => n0(popLinhaEquipe(codigo).vencidos);
 
-// bloco do gestor em Gestão › Alertas
+// bloco do gestor em Gestão › Alertas — números de popular_resumo_alertas
 function popBlocoGestor() {
+  if (POP.faltaResumo) {
+    return `<section class="alerta">${I.alerta}<div><strong>Farmácia Popular sem resumo</strong><span>As funções popular_resumo_equipe / popular_resumo_alertas não foram encontradas no banco. Aplique o popular_patch_resumos.sql.</span></div></section>`;
+  }
   if (!POP.carregado) return "";
-  const pend = POP.pend;
-  const venc = pend.filter((c) => (popDias(c) ?? 0) >= DIAS_ESTORNO).length;
-  const revis = pend.filter(popRevisao);
-  const base = POP.lista || [];
-  const dup = base.filter((c) => c.duplicado && popPendenteOuRecente(c)).length;
-  const gen = base.filter((c) => c.vendedor_generico && popPendenteOuRecente(c)).length;
+  popGarantirPend();
+  const a = POP.alertas || {};
+  const pend = n0(a.pendentes), venc = n0(a.vencidos), dup = n0(a.duplicados), rev = n0(a.revisao), semAt = n0(a.sem_atendente);
+  // conferência: soma dos colaboradores + sem atendente = total de pendências
+  const linhas = [...POP.equipe.values()].filter((x) => x.cod_vendedor != null && n0(x.pendentes) > 0)
+    .sort((x, y) => n0(y.pendentes) - n0(x.pendentes) || n0(y.vencidos) - n0(x.vencidos));
+  const soma = linhas.reduce((s, x) => s + n0(x.pendentes), 0);
+  const semCodigo = n0(POP.equipe.get(null)?.pendentes);
+  const semAtTotal = semAt || semCodigo;
+  const dif = pend - soma - semAtTotal;
+  const revis = POP.pend.filter(popRevisao);
   const kpi = (n, cor, rot, sub, href) => `<a class="cartao pop-kpi" href="${href}"><span class="valor-m" style="color:${cor}">${n}</span><strong>${rot}</strong><span class="nota">${sub}</span></a>`;
   return `
     <div class="linha-base" style="margin:2px 4px 0"><h2 style="margin:0;font-size:17px">Farmácia Popular</h2><a href="#/popular" style="font-size:13px;font-weight:700">Painel completo</a></div>
     <div class="grade-2">
-      ${kpi(pend.length, "var(--erro)", "Pendentes", venc ? `${venc} já no ${DIAS_ESTORNO}º dia` : "nenhuma no " + DIAS_ESTORNO + "º dia", "#/popular")}
-      ${kpi(revis.length, "var(--azul-escuro)", "Revisões", "aguardando você", "#/popular?revisao")}
-      ${kpi(POP.lista ? dup : "…", "#7a5600", "Duplicados", "excluir excedente no RegularizaFarma", "#/popular?duplicados")}
-      ${kpi(POP.lista ? gen : "…", "var(--cinza)", "Usuário genérico", "cobrar login pessoal", "#/popular?generico")}
+      ${kpi(pend, "var(--erro)", "Pendentes", `${venc ? `${venc} no ${DIAS_ESTORNO}º dia ou mais` : `nenhuma no ${DIAS_ESTORNO}º dia`}${dup ? ` · ${dup} duplicado${dup > 1 ? "s" : ""}` : ""}`, "#/popular")}
+      ${kpi(rev, "var(--azul-escuro)", "Revisões", "aguardando você", "#/popular?revisao")}
+      ${kpi(dup, "#7a5600", "Duplicados", "excluir excedente no RegularizaFarma", "#/popular?duplicados")}
+      ${kpi(semAtTotal, "var(--cinza)", "Sem atendente", "usuário genérico · cobrar login pessoal", "#/popular?generico")}
     </div>
-    ${revis.length ? `
+    ${rev ? `
     <section class="cartao">
       <h2 style="margin:0">Revisões solicitadas</h2>
-      ${revis.slice(0, 15).map((c) => `
+      ${!POP.pendCarregada ? `<p class="nota" style="margin:0">Carregando…</p>` : revis.slice(0, 15).map((c) => `
         <div class="pop-rev">
           <div class="linha-base"><a href="#/popular/${encodeURIComponent(c.chave)}"><b>${esc(nomeCurto(c.vendedor))}</b></a><span class="nota">Cupom ${esc(c.coo)} · ${dataBR(c.data)}</span></div>
           <span class="nota" style="font-size:13px">${c.obs_manual ? `“${esc(c.obs_manual)}”` : "Sem justificativa"} · ${esc(c.status)}</span>
@@ -1446,13 +1538,32 @@ function popBlocoGestor() {
           </div>
         </div>`).join("")}
       ${revis.length > 15 ? `<a href="#/popular?revisao" class="nota">Ver todas as ${revis.length}</a>` : ""}
+    </section>` : ""}
+    ${pend ? `
+    <section class="cartao lista-prod">
+      <h2>Pendências por colaborador</h2>
+      ${linhas.map((x) => `<div class="prod"><div class="prod-nome">${esc(nomeCurto(x.vendedor) || "Cód. " + x.cod_vendedor)}<span class="nota">cód. ${esc(x.cod_vendedor)}${x.mais_antigo ? ` · mais antiga ${dataBR(x.mais_antigo)}` : ""}</span></div><span>${n0(x.vencidos) ? `<span class="pill dias-vermelho">${n0(x.vencidos)} no ${DIAS_ESTORNO}º</span> ` : ""}<strong>${n0(x.pendentes)}</strong></span></div>`).join("")}
+      ${semAtTotal ? `<div class="prod"><div class="prod-nome">Sem atendente identificado<span class="nota">usuário genérico · só o gestor vê</span></div><strong>${semAtTotal}</strong></div>` : ""}
+      <p class="nota" style="margin:8px 0 0">Conferência: ${soma} nos colaboradores + ${semAtTotal} sem atendente = ${soma + semAtTotal}${dif ? ` · <b>diferença de ${dif} para o total (${pend})</b>` : ` = total de pendências ✓`}</p>
     </section>` : ""}`;
 }
-// duplicados e genéricos: só os que ainda importam (pendentes ou dos últimos 30 dias)
-function popPendenteOuRecente(c) {
-  if (popPendente(c)) return true;
-  const d = new Date(String(c.data || "").slice(0, 10) + "T12:00");
-  return Date.now() - d.getTime() < 30 * 86400000;
+
+// resumos calculados no navegador (só no modo demonstração)
+function popResumosDe(L) {
+  const ve = (c) => popPendente(c) && (popDias(c) ?? 0) >= DIAS_ESTORNO;
+  const eq = new Map();
+  L.forEach((c) => {
+    const k = c.vendedor_generico && c.cod_vendedor == null ? null : c.cod_vendedor;
+    const r = eq.get(k) || { cod_vendedor: k, vendedor: c.vendedor, total: 0, corretos: 0, pendentes: 0, duplicados: 0, vencidos: 0, mais_antigo: null };
+    r.total++; if (c.status === "CORRETO") r.corretos++; if (c.duplicado) r.duplicados++;
+    if (popPendente(c)) { r.pendentes++; if (!r.mais_antigo || c.data < r.mais_antigo) r.mais_antigo = c.data; }
+    if (ve(c)) r.vencidos++;
+    eq.set(k, r);
+  });
+  const alertas = { total: L.length, corretos: L.filter((c) => c.status === "CORRETO").length, pendentes: L.filter(popPendente).length,
+    duplicados: L.filter((c) => c.duplicado).length, vencidos: L.filter(ve).length, revisao: L.filter((c) => popPendente(c) && popRevisao(c)).length,
+    sem_atendente: L.filter((c) => popPendente(c) && c.cod_vendedor == null).length };
+  return { equipe: eq, alertas };
 }
 
 // ---- tela #/popular ---------------------------------------------------------
@@ -1468,15 +1579,15 @@ function telaPopular() {
   if (!POP.carregado) {
     return moldura("popular", "Farmácia Popular", "", `<section class="cartao"><p style="margin:0;font-weight:600">A auditoria do Farmácia Popular ainda não está ligada a este app.</p></section>`);
   }
-  if (!POP.lista && !POP.carregandoLista) carregarListaPopular(true);
   const gestor = !!estado.perfil?.gestor;
-  const base = POP.lista || POP.pend;
-  const cont = {
-    total: base.length,
-    ok: base.filter((c) => c.status === "CORRETO").length,
-    pend: base.filter(popPendente).length,
-    dup: base.filter((c) => c.duplicado).length,
-  };
+  // pendências/revisões: lista das pendências; demais filtros: lista completa (paginada, só quando escolhidos)
+  const usaPend = POP.kpi === "pend" || POP.kpi === "rev";
+  if (usaPend) popGarantirPend();
+  else if (!POP.lista && !POP.carregandoLista) carregarListaPopular(true);
+  const base = usaPend ? POP.pend : (POP.lista || []);
+  const carregando = usaPend ? (!POP.pendCarregada) : (!POP.lista);
+  const r = gestor ? (POP.alertas || {}) : popEu();
+  const cont = { total: n0(r.total), ok: n0(r.corretos), pend: n0(r.pendentes), dup: n0(r.duplicados) };
   const filtros = {
     total: () => true, ok: (c) => c.status === "CORRETO", pend: popPendente, dup: (c) => c.duplicado,
     rev: popRevisao, gen: (c) => c.vendedor_generico,
@@ -1504,13 +1615,13 @@ function telaPopular() {
     </a>`;
   return moldura("popular", "Farmácia Popular", gestor ? "Todas as lojas" : esc(String(estado.perfil?.nome || "").split(" ")[0]), `
     <div class="pop-kpis">
-      ${card("total", POP.lista ? cont.total : "…", "var(--azul-escuro)", "Total")}
-      ${card("ok", POP.lista ? cont.ok : "…", "var(--verde)", "Corretos")}
+      ${card("total", cont.total, "var(--azul-escuro)", "Total")}
+      ${card("ok", cont.ok, "var(--verde)", "Corretos")}
       ${card("pend", cont.pend, "var(--erro)", "Pendentes")}
-      ${card("dup", POP.lista ? cont.dup : "…", "#7a5600", "Duplic.")}
+      ${card("dup", cont.dup, "#7a5600", "Duplic.")}
     </div>
     ${gestor ? `<div class="pop-chips">
-      <button type="button" data-pop-kpi="rev" aria-pressed="${POP.kpi === "rev"}">Revisões (${POP.pend.filter(popRevisao).length})</button>
+      <button type="button" data-pop-kpi="rev" aria-pressed="${POP.kpi === "rev"}">Revisões (${n0(POP.alertas?.revisao)})</button>
       <button type="button" data-pop-kpi="gen" aria-pressed="${POP.kpi === "gen"}">Usuário genérico</button>
     </div>` : ""}
     <div class="pop-busca">
@@ -1522,8 +1633,8 @@ function telaPopular() {
       <label>Até<input type="date" id="pop-ate" value="${esc(POP.ate)}"></label>
       ${POP.de || POP.ate ? `<button type="button" data-acao="pop-limpar-datas">Limpar</button>` : ""}
     </div>` : ""}
-    <p class="rotulo" style="margin:0 4px">${L.length} ${nomeKpi}${asc ? " · mais antigas primeiro" : " · mais recentes primeiro"}${POP.carregandoLista ? " · carregando…" : ""}</p>
-    ${L.length ? L.slice(0, POP.mostrar).map(item).join("") : `<section class="cartao"><p style="margin:0;font-weight:600">${POP.kpi === "pend" ? "Nenhuma pendência. Bom trabalho!" : "Nada encontrado."}</p></section>`}
+    <p class="rotulo" style="margin:0 4px">${carregando ? "Carregando…" : `${L.length} ${nomeKpi}${asc ? " · mais antigas primeiro" : " · mais recentes primeiro"}`}</p>
+    ${carregando ? "" : L.length ? L.slice(0, POP.mostrar).map(item).join("") : `<section class="cartao"><p style="margin:0;font-weight:600">${POP.kpi === "pend" ? "Nenhuma pendência. Bom trabalho!" : "Nada encontrado."}</p></section>`}
     ${L.length > POP.mostrar ? `<button type="button" class="botao-sec" data-acao="pop-mais">Mostrar mais ${Math.min(60, L.length - POP.mostrar)}</button>` : ""}
     <div class="pop-rodape">${I.relogioP}<span>A partir do ${DIAS_ESTORNO}º dia a venda é estornada e descontada em vale.${POP.lote ? ` Auditoria até ${dataBR(POP.lote.data)}.` : ""}</span></div>`);
 }
@@ -1532,8 +1643,8 @@ function telaPopularDetalhe(chave) {
   const base = [...(POP.lista || []), ...POP.pend];
   const c = base.find((x) => x.chave === chave);
   if (!c) {
-    if (!POP.lista && !POP.carregandoLista && POP.carregado) carregarListaPopular(true);
-    return moldura("popular", "Farmácia Popular", "", `<section class="cartao"><p style="margin:0;font-weight:600">${POP.carregandoLista ? "Carregando…" : "Atendimento não encontrado."}</p><a href="#/popular">Voltar à lista</a></section>`);
+    if (POP.carregado) { popGarantirPend(); if (!POP.lista && !POP.carregandoLista && POP.pendCarregada) carregarListaPopular(true); }
+    return moldura("popular", "Farmácia Popular", "", `<section class="cartao"><p style="margin:0;font-weight:600">${POP.carregandoLista || POP.carregandoPend ? "Carregando…" : "Atendimento não encontrado."}</p><a href="#/popular">Voltar à lista</a></section>`);
   }
   if (POP.detalhe?.chave !== chave) {
     POP.detalhe = { chave, itens: null, hist: null, erro: null };
@@ -1635,11 +1746,9 @@ async function popEditar(chave, args, okMsg) {
     } else {
       const { error } = await sb.rpc("popular_editar", { p_chave: chave, p_status: null, p_situacao: null, p_obs: null, p_motivo: null, ...args });
       if (error) throw error;
-      const { data } = await sb.rpc("popular_minhas_pendencias");
-      POP.pend = (data || []).filter((c) => c.origem !== "AUDITORIA");
-      if (POP.lista) { const r = await sb.rpc("popular_painel_usuario"); if (!r.error) POP.lista = (r.data || []).filter((c) => c.origem !== "AUDITORIA"); }
+      await Promise.all([popCarregarResumos(), popCarregarPend(), POP.lista ? carregarListaPopular(false) : null]);
     }
-    if (DEMO) POP.pend = (POP.lista || []).filter(popPendente).sort((a, b) => a.data.localeCompare(b.data));
+    if (DEMO) { POP.pend = (POP.lista || []).filter(popPendente).sort((a, b) => a.data.localeCompare(b.data)); Object.assign(POP, popResumosDe(POP.lista || [])); }
     POP.msg = okMsg;
     if (POP.detalhe?.chave === chave) { POP.detalhe = null; POP.msgFixa = okMsg; }
   } catch (ex) {
@@ -1784,6 +1893,9 @@ function render() {
   const padrao = estado.perfil?.gestor ? TELAS.equipe : TELAS.mes;
   const tela = (SO_GESTOR.has(nome) && !estado.perfil?.gestor) ? TELAS.mes : TELAS[nome] || padrao;
   app.innerHTML = tela();
+  // ao entrar numa aba que mostra números da Farmácia Popular, atualiza só esses números
+  if (nome !== render.ultima && ["equipe", "gestao", "popular", "mes", "indicadores"].includes(nome)) popAtualizar();
+  render.ultima = nome;
   // no assistente, mostra a última mensagem; nas outras telas, o topo
   window.scrollTo(0, nome === "assistente" && estado.chat.length ? document.body.scrollHeight : 0);
 }
@@ -1887,7 +1999,7 @@ app.addEventListener("click", async (e) => {
   if (e.target.closest("[data-acao=sair]")) {
     if (!DEMO && sb) await sb.auth.signOut();
     Object.assign(estado, { logado: false, perfil: null, dados: null, ranking: [], gestao: null, equipe: [], anterior: false, snapAtual: null, snapAnterior: null });
-    Object.assign(POP, { carregado: false, pend: [], lista: null, detalhe: null, aviso: false, busca: "", de: "", ate: "", kpi: "pend", msg: null });
+    Object.assign(POP, { carregado: false, pend: [], pendCarregada: false, equipe: new Map(), alertas: null, faltaResumo: false, lista: null, detalhe: null, aviso: false, busca: "", de: "", ate: "", kpi: "pend", msg: null });
     location.hash = "#/login";
     render();
   }
