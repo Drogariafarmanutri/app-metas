@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Auditoria Farmácia Popular · Farmanutri</title>
+<style>
+:root{color-scheme:dark;--bg:#232a35;--card:#2d3542;--card2:#36404f;--tx:#eef1f5;--mu:#aab3c1;--bd:#455062;
+  --ok:#43a047;--bad:#e5484d;--ver:#e0a000;--nl:#8a909b;--cn:#b39b91;--ac:#5b8def;--warn:#4a3a1a;--warnb:#f0b429;--rev:#3d8bfd}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--tx);
+  padding:16px;padding-top:calc(12px + env(safe-area-inset-top,0px))}
+header{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;margin-bottom:6px}
+h1{font-size:20px;margin:0}
+.marca{font-size:11px;letter-spacing:.12em;color:var(--mu)}
+.marca b:first-child{color:#4caf50}.marca b:last-child{color:var(--ac)}
+.sub{color:var(--mu);font-size:12px}
+.demo{background:var(--warnb);color:#000;font-weight:bold;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;vertical-align:middle}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}
+button,select,input,textarea{font:inherit;padding:7px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)}
+button{cursor:pointer}button:hover{border-color:var(--mu)}
+button.pri{background:var(--ac);color:#fff;border:0;font-weight:600}
+button.alerta{background:var(--rev);color:#fff;border:0;font-weight:600}
+button:disabled{opacity:.55;cursor:default}
+label.campo{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--mu)}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}
+@media(max-width:640px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.k{background:var(--card);border:2px solid var(--bd);border-radius:12px;padding:12px 14px;text-align:left;cursor:pointer;color:var(--tx);
+  border-left:6px solid var(--nl);transition:background .15s,border-color .15s}
+.k b{display:block;font-size:26px;line-height:1.1}.k span{font-size:12px;color:var(--mu)}
+.k.on{background:var(--card2);border-color:var(--sel);box-shadow:0 0 0 2px var(--sel) inset}
+.k.on span{color:var(--tx)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin:12px 0}
+.card h2{font-size:14px;margin:0 0 8px}
+.row{display:flex;align-items:center;gap:8px;margin:3px 0;font-size:12px}
+.row .n{width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.stk{flex:1;display:flex;height:14px;background:var(--bd);border-radius:3px;overflow:hidden}.stk i{display:block;height:100%}
+.row .t{width:130px;text-align:right;color:var(--mu)}
+.tw{overflow:auto;max-height:640px;border:1px solid var(--bd);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th,td{padding:7px 8px;border-bottom:1px solid var(--bd);text-align:left;vertical-align:top}
+th{position:sticky;top:0;background:var(--card2);cursor:pointer;white-space:nowrap;z-index:1;font-weight:600}
+tbody tr{cursor:pointer}tbody tr:hover{background:var(--card2)}
+.nw{white-space:nowrap}.sel{user-select:all}
+.tag{padding:2px 8px;border-radius:10px;font-weight:bold;font-size:11px;white-space:nowrap;color:#fff;display:inline-block}
+.s-CORRETO{background:var(--ok)}.s-INCORRETO{background:var(--bad)}.s-VERIFICAR{background:var(--ver);color:#000}.s-NL{background:var(--nl)}.s-CN{background:var(--cn)}
+.c-PENDENTE{background:transparent;border:1px solid var(--bad);color:var(--bad)}.c-REVISAO{background:var(--rev)}.c-CORRIGIDO{background:var(--rev)}.c-VALIDADO{background:var(--ok)}
+.man{background:#b26a00}.dup{background:var(--warnb);color:#000}
+.d7{color:var(--bad);font-weight:bold}.d5{color:var(--warnb);font-weight:bold}
+.pend{font-size:11px}
+.vazio{padding:28px;text-align:center;color:var(--mu)}
+dialog{border:1px solid var(--bd);border-radius:14px;background:var(--card);color:var(--tx);padding:0;width:min(760px,96vw);max-height:92vh}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.dh{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--bd);position:sticky;top:0;background:var(--card);z-index:2}
+.dh h3{margin:0;font-size:16px}
+.db{padding:14px 16px;overflow:auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px 16px;font-size:13px;margin-bottom:12px}
+.grid div span{display:block;font-size:11px;color:var(--mu)}
+.sec{font-size:13px;font-weight:bold;margin:16px 0 6px;color:var(--ac)}
+.box{border:1px solid var(--bd);border-radius:10px;padding:10px 12px;font-size:13px;background:var(--card2)}
+.hist{font-size:12px;padding-left:18px}.hist li{margin:4px 0}
+form.ed{display:grid;gap:10px}
+form.ed .lin{display:flex;flex-wrap:wrap;gap:8px}
+form.ed label{font-size:12px;color:var(--mu);display:flex;flex-direction:column;gap:3px;flex:1;min-width:160px}
+.erro{color:var(--bad);font-weight:bold;font-size:12px}
+#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;display:none;z-index:9}
+/* entrada */
+#entrada{max-width:380px;margin:9vh auto 0}
+#entrada .logo{text-align:center;margin-bottom:18px}
+#entrada .logo strong{font-size:30px;letter-spacing:.02em}
+#entrada form{display:grid;gap:12px}
+/* aviso ao entrar */
+.aviso-topo{font-size:40px;font-weight:800;line-height:1}
+.estorno{margin-top:14px;padding:14px;border-radius:10px;background:#3b1215;border:2px solid var(--bad);color:#ffd7d9;font-weight:700;font-size:15px;
+  animation:pisca 1.6s ease-in-out infinite}
+@keyframes pisca{50%{border-color:#ff8a8f;box-shadow:0 0 18px rgba(229,72,77,.45)}}
+@media (prefers-reduced-motion:reduce){.estorno{animation:none}}
+.dias{width:100%;margin-top:10px}.dias td,.dias th{font-size:13px}
+/* impressão */
+#impressao{display:none}
+@media print{
+  body{background:#fff;color:#000;padding:0}
+  body>*:not(#impressao){display:none!important}
+  #impressao{display:block;font:11px Arial,sans-serif;color:#000}
+  #impressao table{border-collapse:collapse;width:100%}
+  #impressao th,#impressao td{border:1px solid #999;padding:4px 5px;color:#000;background:#fff;position:static}
+  #impressao h2{font-size:15px;margin:0 0 4px}
+  #impressao .aviso{border:2px solid #000;padding:6px;margin:8px 0;font-weight:bold}
+}
+</style>
+</head>
+<body>
+<!-- ============================ tela de entrada ============================ -->
+<section id="entrada" hidden>
+  <div class="logo">
+    <div class="marca">DROGARIA</div>
+    <strong><span style="color:#4caf50">FARMA</span><span style="color:var(--ac)">NUTRI</span></strong>
+    <div class="sub" style="margin-top:4px">Auditoria – Farmácia Popular <span id="demoTag1"></span></div>
+  </div>
+  <form class="card" id="fLogin">
+    <label class="campo">Código do Automatiza<input id="lCod" inputmode="numeric" autocomplete="username" required></label>
+    <label class="campo">Senha do app<input id="lSen" type="password" autocomplete="current-password" required></label>
+    <div id="lErro" class="erro" role="alert"></div>
+    <button class="pri" type="submit" id="lBtn">Entrar</button>
+    <div class="sub">Use o mesmo código e senha do app Minhas Metas.</div>
+    <div class="sub" id="lDemo" hidden><b>Demonstração:</b> 999 = gestor; ou o código de um vendedor. Qualquer senha.</div>
+  </form>
+</section>
+
+<!-- ============================ painel ============================ -->
+<main id="painel" hidden>
+<header>
+  <div>
+    <div class="marca"><b>FARMA</b><b>NUTRI</b> · AUDITORIA FARMÁCIA POPULAR</div>
+    <h1 id="titulo">Meus atendimentos <span id="demoTag2"></span></h1>
+    <div class="sub" id="src">Carregando…</div>
+  </div>
+  <div class="bar" style="margin:0"><span class="sub" id="quem"></span><button id="uSair">Sair</button></div>
+</header>
+
+<div class="kpis" id="kp" role="group" aria-label="Filtro rápido"></div>
+
+<div class="bar">
+  <label class="campo">De<input type="date" id="fd1"></label>
+  <label class="campo">Até<input type="date" id="fd2"></label>
+  <label class="campo" style="flex:1;min-width:240px">Pesquisar
+    <input id="fq" type="search" placeholder="Nome, CPF, autorização (AUTMS) ou cupom"></label>
+  <label class="campo" id="lblCor" hidden>Correções
+    <select id="fc"><option value="">Todas</option><option value="REVISAO">Revisão solicitada</option>
+      <option value="PENDENTE">Pendente (sem pedido)</option><option value="VALIDADO">Validado pelo gestor</option></select></label>
+  <div style="display:flex;gap:8px;align-self:flex-end">
+    <button id="exp">⬇ Exportar Excel</button>
+    <button id="imp">🖨 Imprimir pendências</button>
+  </div>
+</div>
+
+<div class="card" id="cardVend" hidden><h2>Pendências por vendedor <span class="sub" id="vSel"></span></h2><div id="vb"></div></div>
+
+<div class="card"><h2 id="tTab">Atendimentos <span class="sub" id="cnt"></span></h2>
+  <div class="tw"><table><thead><tr id="th"></tr></thead><tbody id="tb"></tbody></table></div>
+  <div id="mais" style="margin-top:8px"></div>
+</div>
+<div class="sub">
+  Lista das vendas Farmácia Popular do Automatiza cruzadas com a auditoria (1º autorização AUTMS, 2º cupom fiscal, 3º data + nome).
+  Pendentes = incorretos, a verificar e não lançados. Dias = dias desde a venda. Clique no atendimento para ver os detalhes.
+</div>
+</main>
+
+<div id="impressao"></div>
+
+<dialog id="dlg"><div class="dh"><h3 id="dTit"></h3><button id="dFechar" aria-label="Fechar">✕</button></div><div class="db" id="dCorpo"></div></dialog>
+
+<dialog id="dlgAviso" style="width:min(520px,94vw)">
+  <div class="dh"><h3>Seus atendimentos pendentes</h3><button id="aFechar" aria-label="Fechar">✕</button></div>
+  <div class="db" id="aCorpo"></div>
+</dialog>
+<div id="toast" role="status"></div>
+
+<script src="config.js" onerror="window.PAINEL_CONFIG=window.PAINEL_CONFIG||null"></script>
+<script>
+"use strict";
+// ------------------------------------------------------------------ configuração
+const CFG = window.PAINEL_CONFIG || {};
+const DEMO = !!window.DEMO_DADOS || /[?&]demo\b/.test(location.search) || !CFG.SUPABASE_URL;
+const URLB = (CFG.SUPABASE_URL || "").replace(/\/+$/, "").replace(/\/rest\/v1$/, "");
+const ANON = CFG.SUPABASE_ANON_KEY || "";
+const DOMINIO = CFG.EMAIL_DOMINIO || "vendedor.farmanutri.app";
+const ATUALIZAR_MIN = CFG.ATUALIZAR_MINUTOS || 5;
+const DIAS_ESTORNO = CFG.DIAS_ESTORNO || 7;
+const LIMITE = 800;
+
+const $ = i => document.getElementById(i);
+const PEND = new Set(["INCORRETO", "VERIFICAR", "NÃO LANÇADO", "VENDA CANCELADA"]);
+const CLS = {"CORRETO":"s-CORRETO","INCORRETO":"s-INCORRETO","VERIFICAR":"s-VERIFICAR","NÃO LANÇADO":"s-NL","VENDA CANCELADA":"s-CN"};
+const NOME_SIT = {PENDENTE: "Pendente", REVISAO: "Revisão solicitada", CORRIGIDO: "Revisão solicitada", VALIDADO: "Validado"};
+
+let fVend = "";
+let D = [], sess = null, kpi = "pend", sortK = "dias_em_aberto", sortD = -1, mostrar = LIMITE, infoLote = null;
+
+const esc = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const fd = s => s ? String(s).slice(0, 10).split("-").reverse().join("/") : "";
+const fdh = s => s ? new Date(s).toLocaleString("pt-BR", {dateStyle: "short", timeStyle: "short"}) : "";
+const tel = v => { let d = String(v ?? "").replace(/\D/g, ""); if (!d || /^0+$/.test(d)) return "";
+  if (d.length === 11) return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`; return d; };
+const so = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const brl = v => (+v || 0).toLocaleString("pt-BR", {style: "currency", currency: "BRL"});
+function toast(m) { const t = $("toast"); t.textContent = m; t.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = "none", 3500); }
+const guardar = (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+const ler = k => { try { return JSON.parse(sessionStorage.getItem(k) || "null"); } catch (e) { return null; } };
+const gestor = () => sess && (sess.perfil === "admin" || sess.perfil === "supervisor");
+const ehPendente = c => PEND.has(c.status) && c.situacao !== "VALIDADO";
+
+// ------------------------------------------------------------------ acesso ao banco
+async function api(caminho, {metodo = "GET", corpo} = {}) {
+  const h = {apikey: ANON, "Content-Type": "application/json", Authorization: "Bearer " + (sess ? sess.token : ANON)};
+  const r = await fetch(`${URLB}/rest/v1/${caminho}`, {method: metodo, headers: h, body: corpo ? JSON.stringify(corpo) : undefined});
+  if (r.status === 401 && sess) {
+    if (await renovar()) return api(caminho, {metodo, corpo});
+    sair("Sua sessão expirou. Entre de novo."); throw new Error("Sessão expirada.");
+  }
+  const txt = await r.text(); const js = txt ? JSON.parse(txt) : null;
+  if (!r.ok) throw new Error((js && (js.message || js.error_description || js.hint)) || `Erro ${r.status}`);
+  return js;
+}
+async function autenticar(corpo, tipo) {
+  const r = await fetch(`${URLB}/auth/v1/token?grant_type=${tipo}`, {method: "POST",
+    headers: {apikey: ANON, "Content-Type": "application/json"}, body: JSON.stringify(corpo)});
+  const js = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(/invalid/i.test(js.error_description || js.msg || "") ? "Código ou senha inválidos." : (js.error_description || js.msg || "Não foi possível entrar."));
+  return js;
+}
+async function renovar() {
+  try { const js = await autenticar({refresh_token: sess.refresh}, "refresh_token");
+    Object.assign(sess, {token: js.access_token, refresh: js.refresh_token}); guardar("popular_sessao", sess); return true;
+  } catch (e) { return false; }
+}
+
+// ------------------------------------------------------------------ modo demonstração
+function demoLinhas() {
+  const d = window.DEMO_DADOS || {linhas: [], campos: []};
+  return d.linhas.map(a => Object.fromEntries(d.campos.map((c, i) => [c, a[i]])));
+}
+function demoVisivel(c) { return gestor() || c.cod_vendedor === sess.codigo; }
+
+// ------------------------------------------------------------------ entrar / sair
+$("fLogin").onsubmit = async ev => {
+  ev.preventDefault();
+  const cod = $("lCod").value.replace(/\D/g, ""), sen = $("lSen").value;
+  if (!cod || !sen) { $("lErro").textContent = "Informe código e senha."; return; }
+  $("lBtn").disabled = true; $("lErro").textContent = "";
+  try {
+    if (DEMO) {
+      const L = demoLinhas(); const meu = L.find(c => String(c.cod_vendedor) === cod);
+      sess = cod === "999" ? {codigo: 999, nome: "GESTOR (DEMONSTRAÇÃO)", perfil: "admin"}
+           : {codigo: +cod, nome: meu ? meu.vendedor : `Vendedor ${cod}`, perfil: "colaborador"};
+    } else {
+      const js = await autenticar({email: `${cod}@${DOMINIO}`, password: sen}, "password");
+      sess = {token: js.access_token, refresh: js.refresh_token};
+      let u = await api("rpc/popular_usuario_atual", {metodo: "POST", corpo: {}});
+      if (Array.isArray(u)) u = u[0];
+      if (!u || u.codigo == null) { sess = null; throw new Error("Usuário sem acesso (inativo no Automatiza ou sem cadastro no app)."); }
+      Object.assign(sess, {codigo: u.codigo, nome: u.nome, perfil: u.perfil});
+      guardar("popular_sessao", sess);
+    }
+    $("lSen").value = "";
+    await entrar(true);
+  } catch (e) { $("lErro").textContent = e.message; }
+  finally { $("lBtn").disabled = false; }
+};
+function sair(msg) {
+  sess = null; D = []; fVend = ""; guardar("popular_sessao", null);
+  $("painel").hidden = true; $("entrada").hidden = false; $("lDemo").hidden = !DEMO;
+  if (msg) $("lErro").textContent = msg;
+}
+$("uSair").onclick = () => sair();
+
+async function entrar(aviso) {
+  $("entrada").hidden = true; $("painel").hidden = false;
+  const PERF = {admin: "gestor", supervisor: "gestor", colaborador: "colaborador"};
+  $("quem").textContent = `👤 ${sess.nome || sess.codigo} · ${PERF[sess.perfil] || sess.perfil}`;
+  $("titulo").firstChild.textContent = gestor() ? "Atendimentos – todas as lojas " : "Meus atendimentos ";
+  $("lblCor").hidden = !gestor(); $("cardVend").hidden = !gestor();
+  kpi = "pend"; mostrar = LIMITE;
+  await carregar();
+  if (aviso) mostrarAviso();
+}
+
+// ------------------------------------------------------------------ carga
+async function carregar(silencioso) {
+  try {
+    if (DEMO) {
+      D = demoLinhas().filter(demoVisivel);
+      infoLote = window.DEMO_DADOS?.lotes || null;
+    } else {
+      const [linhas, lotes] = await Promise.all([
+        api("rpc/popular_painel_usuario", {metodo: "POST", corpo: {}}),
+        api("popular_lotes?select=lote,data_auditoria&order=lote.desc&limit=1"),
+      ]);
+      D = linhas; infoLote = lotes[0] ? {ultimo: lotes[0].lote, data: lotes[0].data_auditoria} : null;
+    }
+    render();
+    const datas = D.map(x => x.data).filter(Boolean).sort();
+    $("src").textContent = (datas.length ? `Vendas de ${fd(datas[0])} a ${fd(datas[datas.length - 1])}` : "Sem vendas") +
+      (infoLote ? ` · auditoria até ${fd(infoLote.data)} (lote ${infoLote.ultimo})` : "") +
+      (DEMO ? " · dados de demonstração" : ` · atualizado às ${new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"})}`);
+  } catch (e) { if (!silencioso) $("src").textContent = "⚠ Não foi possível carregar: " + e.message; }
+}
+
+// ------------------------------------------------------------------ filtros
+function base() {   // data + pesquisa + correções (os números dos cartões usam esta base)
+  const a = $("fd1").value, b = $("fd2").value, q = so($("fq").value.trim()), qd = q.replace(/\D/g, ""), cr = $("fc").value;
+  return D.filter(c => (!fVend || (c.vendedor || "(sem vendedor)") === fVend) && (!a || (c.data || "") >= a) && (!b || (c.data || "") <= b)
+    && (!cr || (cr === "REVISAO" ? (c.situacao === "REVISAO" || c.situacao === "CORRIGIDO") : c.situacao === cr))
+    && (!q || so(c.cliente).includes(q) || String(c.coo ?? "").includes(q)
+        || (qd.length >= 3 && (String(c.cpf ?? "").includes(qd) || String(c.autms ?? "").includes(qd)))));
+}
+const FILTRO_KPI = {total: () => true, ok: c => c.status === "CORRETO", pend: ehPendente, dup: c => c.duplicado};
+
+function render() {
+  const B = base();
+  const K = [["total", "Total de cupons", B.length, "--ac"], ["ok", "Corretos", B.filter(FILTRO_KPI.ok).length, "--ok"],
+             ["pend", "Pendentes", B.filter(ehPendente).length, "--bad"], ["dup", "Duplicados", B.filter(FILTRO_KPI.dup).length, "--warnb"]];
+  $("kp").innerHTML = K.map(k => `<button type="button" class="k${kpi === k[0] ? " on" : ""}" data-k="${k[0]}" aria-pressed="${kpi === k[0]}"
+      style="border-left-color:var(${k[3]});--sel:var(${k[3]})"><b>${k[2]}</b><span>${k[1]}</span></button>`).join("");
+  document.querySelectorAll(".k").forEach(e => e.onclick = () => { kpi = e.dataset.k; mostrar = LIMITE; render(); });
+
+  const L = B.filter(FILTRO_KPI[kpi]);
+  $("tTab").firstChild.textContent = {total: "Todos os atendimentos ", ok: "Atendimentos corretos ", pend: "Atendimentos pendentes ", dup: "Lançamentos duplicados "}[kpi];
+
+  if (gestor()) {
+    const by = {};
+    B.forEach(c => { const v = c.vendedor || "(sem vendedor)"; const o = by[v] = by[v] || {t: 0, p: 0}; o.t++; if (ehPendente(c)) o.p++; });
+    $("vb").innerHTML = Object.entries(by).sort((a, b) => b[1].p - a[1].p).slice(0, 25).map(([v, o]) =>
+      `<div class="row"><span class="n" title="${esc(v)}" data-v="${esc(v)}">${esc(v)}</span><div class="stk"><i style="width:${o.p / o.t * 100}%;background:var(--bad)"></i><i style="width:${(o.t - o.p) / o.t * 100}%;background:var(--ok)"></i></div><span class="t">${o.p} pend. de ${o.t}</span></div>`).join("") || '<span class="sub">Sem dados</span>';
+    document.querySelectorAll("#vb .n").forEach(e => e.onclick = () => { fVend = fVend === e.dataset.v ? "" : e.dataset.v; mostrar = LIMITE; render(); });
+    $("vSel").innerHTML = fVend ? `Filtrando: <b>${esc(fVend)}</b> <button id="vLimpa">✕ limpar</button>` : "Clique no nome para filtrar.";
+    if ($("vLimpa")) $("vLimpa").onclick = () => { fVend = ""; render(); };
+  }
+
+  const H = [["coo", "Cupom"], ["data", "Data"], ["dias_em_aberto", "Dias"], ["vendedor", "Vendedor"], ["cliente", "Cliente"],
+             ["autms", "Autorização (AUTMS)"], ["telefone", "Telefone"], ["status", "Situação"], ["situacao", "Revisão"], ["pend", "Pendências"]];
+  $("th").innerHTML = H.map(h => `<th data-k="${h[0]}" scope="col">${h[1]}${sortK === h[0] ? (sortD > 0 ? " ▲" : " ▼") : ""}</th>`).join("");
+  document.querySelectorAll("th").forEach(e => e.onclick = () => { sortD = sortK === e.dataset.k ? -sortD : 1; sortK = e.dataset.k; render(); });
+  const val = (c, k) => k === "pend" ? pendencia(c) : (c[k] ?? "");
+  L.sort((a, b) => { const x = val(a, sortK), y = val(b, sortK);
+    return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), "pt-BR", {numeric: true})) * sortD; });
+  $("cnt").textContent = `(${L.length}${L.length > mostrar ? ` – mostrando ${mostrar}` : ""})`;
+  $("tb").innerHTML = L.slice(0, mostrar).map(c => {
+    const p = pendencia(c), dias = c.dias_em_aberto;
+    return `<tr data-c="${esc(c.chave)}">
+      <td class="nw">${esc(c.coo ?? "")}</td><td class="nw">${fd(c.data)}</td>
+      <td class="nw ${dias >= DIAS_ESTORNO ? "d7" : dias >= DIAS_ESTORNO - 2 ? "d5" : ""}">${ehPendente(c) && dias != null ? dias : ""}</td>
+      <td>${esc(c.vendedor || "")}${c.vendedor_generico ? ` <span class="tag dup" title="Venda no usuário ${esc(c.vendedor_venda || "genérico")}">usuário genérico</span>` : ""}</td>
+      <td>${esc(c.cliente || "")}</td>
+      <td class="nw sel">${esc(c.autms || "")}</td><td class="nw sel">${esc(tel(c.telefone))}</td>
+      <td><span class="tag ${CLS[c.status] || "s-NL"}">${esc(c.status)}</span>${c.status_manual ? ' <span class="tag man" title="Status ajustado pelo gestor">✎</span>' : ""}${c.duplicado ? ' <span class="tag dup">duplicado</span>' : ""}</td>
+      <td>${c.situacao && c.situacao !== "PENDENTE" ? `<span class="tag c-${esc(c.situacao)}">${esc(NOME_SIT[c.situacao] || c.situacao)}</span>` : ""}</td>
+      <td class="pend">${esc(p)}</td></tr>`;
+  }).join("") || `<tr><td colspan="${H.length}" class="vazio">${kpi === "pend" ? "Nenhum atendimento pendente. 👏" : "Nada encontrado com esses filtros."}</td></tr>`;
+  document.querySelectorAll("#tb tr[data-c]").forEach(e => e.onclick = () => abrir(e.dataset.c));
+  $("mais").innerHTML = L.length > mostrar ? `<button id="btMais">Mostrar mais ${Math.min(LIMITE, L.length - mostrar)}</button>` : "";
+  if ($("btMais")) $("btMais").onclick = () => { mostrar += LIMITE; render(); };
+}
+
+function pendencia(c) {
+  const p = [];
+  if (c.status === "NÃO LANÇADO") p.push("Atendimento não lançado no RegularizaFarma");
+  else if (c.status !== "CORRETO" && c.obs_ia) p.push(c.obs_ia);
+  if (c.status === "VENDA CANCELADA") p.push("Venda cancelada no Automatiza, mas o atendimento está lançado");
+  if (c.divergencia) p.push(c.divergencia);
+  if (c.obs_manual) p.push("Obs.: " + c.obs_manual);
+  return p.join(" | ");
+}
+
+// ------------------------------------------------------------------ aviso ao entrar
+function mostrarAviso() {
+  const meus = D.filter(c => ehPendente(c) && (gestor() || c.cod_vendedor === sess.codigo));
+  const porDia = {};
+  meus.forEach(c => { const d = c.dias_em_aberto ?? 0; porDia[d] = (porDia[d] || 0) + 1; });
+  const dias = Object.keys(porDia).map(Number).sort((a, b) => b - a);
+  const venc = meus.filter(c => (c.dias_em_aberto ?? 0) >= DIAS_ESTORNO).length;
+  $("aCorpo").innerHTML = meus.length ? `
+    <div class="aviso-topo">${meus.length}</div>
+    <div>${gestor() ? "atendimentos pendentes em todas as lojas" : "atendimento(s) pendente(s) no seu usuário"}</div>
+    ${dias.length ? `<table class="dias"><thead><tr><th>Dias de atraso</th><th>Atendimentos</th></tr></thead><tbody>
+      ${dias.map(d => `<tr><td class="${d >= DIAS_ESTORNO ? "d7" : d >= DIAS_ESTORNO - 2 ? "d5" : ""}">${d} dia${d === 1 ? "" : "s"}${d >= DIAS_ESTORNO ? " ⚠" : ""}</td><td>${porDia[d]}</td></tr>`).join("")}
+    </tbody></table>` : ""}
+    <div class="estorno">⚠ A partir do ${DIAS_ESTORNO}º dia de atraso a venda será ESTORNADA e DESCONTADA EM VALE.
+      ${venc ? `<br>Você já tem ${venc} atendimento(s) nessa situação.` : ""}</div>
+    <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="pri" id="aVer">Ver pendências</button></div>`
+    : `<div class="aviso-topo">0</div><div>Nenhum atendimento pendente. Bom trabalho! 👏</div>
+       <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="pri" id="aVer">Continuar</button></div>`;
+  $("dlgAviso").showModal();
+  $("aVer").onclick = () => { $("dlgAviso").close(); kpi = "pend"; render(); };
+}
+$("aFechar").onclick = () => $("dlgAviso").close();
+
+// ------------------------------------------------------------------ detalhe
+const simnao = v => v === true ? "✔ ok" : v === false ? "✘ irregular" : "—";
+async function abrir(chave) {
+  const c = D.find(x => x.chave === chave); if (!c) return;
+  $("dTit").textContent = `Cupom ${c.coo} · ${fd(c.data)}`;
+  const campo = (r, v) => `<div><span>${r}</span>${v === "" || v == null ? "—" : v}</div>`;
+  $("dCorpo").innerHTML = `
+    <div style="margin-bottom:10px"><span class="tag ${CLS[c.status] || "s-NL"}">${esc(c.status)}</span>
+      ${c.situacao && c.situacao !== "PENDENTE" ? `<span class="tag c-${esc(c.situacao)}">${esc(NOME_SIT[c.situacao])}</span>` : ""}
+      ${c.duplicado ? `<span class="tag dup">${c.qtd_auditorias} lançamentos na auditoria</span>` : ""}
+      ${ehPendente(c) && c.dias_em_aberto != null ? `<span class="tag ${c.dias_em_aberto >= DIAS_ESTORNO ? "s-INCORRETO" : "s-NL"}">${c.dias_em_aberto} dia(s) de atraso</span>` : ""}</div>
+    ${pendencia(c) ? `<div class="box" style="margin-bottom:10px"><b>Pendências:</b> ${esc(pendencia(c))}</div>` : ""}
+    <div class="grid">
+      ${campo("Cliente", esc(c.cliente))}${campo("CPF", esc(c.cpf))}
+      ${campo("Autorização (AUTMS)", `<span class="sel">${esc(c.autms)}</span>`)}${campo("Telefone", `<span class="sel">${esc(tel(c.telefone))}</span>`)}
+      ${campo(c.vendedor_generico ? "Atendente (pela auditoria)" : "Vendedor (Automatiza)", esc(c.vendedor))}
+      ${c.vendedor_generico ? campo("Usuário da venda", esc(c.vendedor_venda) + " (genérico)") : campo("Loja", esc(c.loja || ("Filial " + c.filial)))}
+      ${campo("Data/hora da venda", esc(fdh(c.data_hora) || fd(c.data)))}${campo("Subsidiado pelo programa", c.subsidiado != null ? brl(c.subsidiado) : "")}
+      ${campo("Confronto", esc(c.criterio || "sem auditoria"))}${campo("Lote da auditoria", c.lote ? `${c.lote}` : "")}
+      ${campo("Receita", simnao(c.receita))}${campo("Doc. beneficiário", simnao(c.doc_benef))}${campo("Cupom vinculado", simnao(c.cupom_vinc))}
+    </div>
+    <div id="dAcao"></div>
+    <div class="sec">Itens da venda</div><div id="dItens" class="sub">Carregando…</div>
+    <div class="sec">Histórico</div><div id="dHist" class="sub">Carregando…</div>`;
+  formAcao(c);
+  $("dlg").showModal();
+  try {
+    const det = DEMO ? demoDetalhe(c) : await api("rpc/popular_detalhe", {metodo: "POST", corpo: {p_chave: c.chave}});
+    $("dItens").innerHTML = det.itens.length ? `<table><thead><tr><th>Produto</th><th>Qtde</th><th>Subsidiado</th></tr></thead><tbody>${det.itens.map(i =>
+      `<tr><td>${esc(i.produto)}</td><td>${esc(i.qtde)}</td><td>${brl(i.subsidiado)}</td></tr>`).join("")}</tbody></table>` : "Sem itens.";
+    const NC = {status_manual: "Status", situacao: "Revisão", obs_manual: "Observação"};
+    $("dHist").innerHTML = det.hist.length ? `<ul class="hist">${det.hist.map(h => `<li><b>${fdh(h.em)}</b> · ${esc(h.usuario_nome || (h.usuario_codigo ? "cód. " + h.usuario_codigo : h.origem))}
+      — ${esc(NC[h.campo] || h.campo)}: <i>${esc(NOME_SIT[h.valor_antes] || h.valor_antes || "vazio")}</i> → <b>${esc(NOME_SIT[h.valor_depois] || h.valor_depois || "vazio")}</b>${h.motivo ? ` · ${esc(h.motivo)}` : ""}</li>`).join("")}</ul>` : "Nenhuma alteração registrada.";
+  } catch (e) { $("dItens").textContent = "⚠ " + e.message; $("dHist").textContent = ""; }
+}
+function demoDetalhe(c) {
+  const d = window.DEMO_DADOS || {};
+  return {itens: (d.itens || []).filter(i => i[0] === c.filial && i[1] === c.codigo_venda).map(i => ({produto: i[2], qtde: i[3], subsidiado: i[6]})),
+          hist: (d.hist || []).filter(h => h.chave === c.chave).sort((a, b) => b.em.localeCompare(a.em))};
+}
+
+function formAcao(c) {
+  const alvo = $("dAcao");
+  if (!gestor()) {
+    if (!ehPendente(c)) { alvo.innerHTML = ""; return; }
+    if (c.situacao === "REVISAO" || c.situacao === "CORRIGIDO") {
+      alvo.innerHTML = `<div class="sec">Revisão do gestor</div><div class="box">Você já pediu revisão deste atendimento${c.obs_manual ? `: “${esc(c.obs_manual)}”` : ""}. Aguarde o gestor.
+        <div style="margin-top:8px"><button id="eCancel">Cancelar pedido</button> <span id="eMsg"></span></div></div>`;
+      $("eCancel").onclick = () => salvar(c, {p_situacao: "PENDENTE", p_obs: "", p_motivo: "Pedido de revisão cancelado pelo colaborador"});
+      return;
+    }
+    alvo.innerHTML = `<div class="sec">Solicitar revisão do gestor</div>
+      <form class="ed box" id="fEd">
+        <div class="sub" style="color:var(--tx)">Use <b>somente</b> quando o atendimento estiver como <b>pendente incorretamente</b>
+          (por exemplo: o lançamento está certo, a receita está dentro do prazo ou a correção já foi feita no RegularizaFarma).
+          Para resolver uma pendência de verdade, corrija no aplicativo de lançamento.</div>
+        <label>Por que este atendimento não deveria estar pendente?<textarea id="eObs" rows="3" maxlength="500" required></textarea></label>
+        <div class="lin" style="align-items:center"><button class="alerta" type="submit" id="eBtn">Solicitar revisão do gestor</button><span id="eMsg"></span></div>
+      </form>`;
+    $("fEd").onsubmit = ev => { ev.preventDefault(); const t = $("eObs").value.trim();
+      if (!t) { $("eMsg").innerHTML = '<span class="erro">Explique o motivo.</span>'; return; }
+      salvar(c, {p_situacao: "REVISAO", p_obs: t}); };
+    return;
+  }
+  alvo.innerHTML = `<div class="sec">Ação do gestor</div>
+    ${c.situacao === "REVISAO" || c.situacao === "CORRIGIDO" ? `<div class="box" style="margin-bottom:8px;border-color:var(--rev)"><b>Revisão solicitada</b>${c.obs_manual ? `: “${esc(c.obs_manual)}”` : ""}</div>` : ""}
+    <form class="ed box" id="fEd">
+      <div class="lin">
+        <label>Status<select id="eSt"><option value="__">— manter —</option><option value="">Voltar ao status da auditoria</option>
+          <option>CORRETO</option><option>INCORRETO</option><option>VERIFICAR</option></select></label>
+        <label>Revisão<select id="eSit"><option value="">— manter —</option><option value="VALIDADO">Validar (encerrar)</option><option value="PENDENTE">Reabrir / manter pendente</option></select></label>
+      </div>
+      <label>Observação<textarea id="eObs" rows="2" maxlength="500">${esc(c.obs_manual || "")}</textarea></label>
+      <label>Motivo (obrigatório para mudar o status)<input id="eMot" maxlength="300"></label>
+      <div class="lin" style="align-items:center"><button class="pri" type="submit" id="eBtn">Salvar</button><span id="eMsg"></span></div>
+    </form>`;
+  $("fEd").onsubmit = ev => {
+    ev.preventDefault();
+    const st = $("eSt").value, sit = $("eSit").value, obs = $("eObs").value.trim(), mot = $("eMot").value.trim();
+    const obsMudou = obs !== (c.obs_manual || "");
+    if (st === "__" && !sit && !obsMudou) { $("eMsg").innerHTML = '<span class="erro">Nada para salvar.</span>'; return; }
+    salvar(c, {p_status: st === "__" ? null : st, p_situacao: sit || null, p_obs: obsMudou ? obs : null, p_motivo: mot || null});
+  };
+}
+async function salvar(c, args) {
+  const corpo = {p_chave: c.chave, p_status: null, p_situacao: null, p_obs: null, p_motivo: null, ...args};
+  if ($("eBtn")) $("eBtn").disabled = true; if ($("eMsg")) $("eMsg").textContent = "Salvando…";
+  try {
+    if (DEMO) demoSalvar(c, corpo); else await api("rpc/popular_editar", {metodo: "POST", corpo});
+    if (!DEMO) { const linhas = await api("rpc/popular_painel_usuario", {metodo: "POST", corpo: {}}); D = linhas; }
+    render(); toast(corpo.p_situacao === "REVISAO" ? "Pedido de revisão enviado ao gestor." : "Alteração salva.");
+    abrir(c.chave);
+  } catch (e) { if ($("eMsg")) $("eMsg").innerHTML = `<span class="erro">${esc(e.message)}</span>`; if ($("eBtn")) $("eBtn").disabled = false; }
+}
+function demoSalvar(c, a) {
+  if (a.p_status !== null && a.p_status !== "" && !a.p_motivo) throw new Error("Informe o motivo da alteração de status.");
+  const agora = new Date().toISOString(), H = window.DEMO_DADOS.hist;
+  const reg = (campo, antes, depois) => { if ((antes ?? null) !== (depois ?? null)) H.push({chave: c.chave, em: agora, campo, valor_antes: antes, valor_depois: depois, motivo: a.p_motivo, usuario_nome: sess.nome}); };
+  if (a.p_status !== null) { const n = a.p_status || null; reg("status_manual", c.status_manual, n); c.status_manual = n; }
+  if (a.p_situacao) { reg("situacao", c.situacao, a.p_situacao); c.situacao = a.p_situacao; }
+  if (a.p_obs !== null) { const n = a.p_obs || null; reg("obs_manual", c.obs_manual, n); c.obs_manual = n; }
+  c.status = c.cancelada ? "VENDA CANCELADA" : c.status_manual || c.status_ia || "NÃO LANÇADO";
+  if (c.status === "CORRETO") c.situacao = null; else if (!c.situacao) c.situacao = "PENDENTE";
+}
+
+// ------------------------------------------------------------------ exportar e imprimir
+$("exp").onclick = () => {
+  const L = base().filter(FILTRO_KPI[kpi]);
+  const cols = [["coo", "Cupom"], ["data", "Data"], ["dias_em_aberto", "Dias"], ["vendedor", "Vendedor"], ["cliente", "Cliente"], ["cpf", "CPF"],
+    ["autms", "AUTMS"], ["telefone", "Telefone"], ["status", "Situação"], ["situacao", "Revisão"], ["pend", "Pendências"]];
+  const cel = v => { v = v == null ? "" : String(v); return /[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
+  const fmt = (c, k) => k === "pend" ? pendencia(c) : k === "data" ? fd(c.data) : k === "situacao" ? (NOME_SIT[c.situacao] || "")
+    : k === "autms" || k === "cpf" ? (c[k] ? `="${c[k]}"` : "") : c[k];
+  const csv = "﻿" + [cols.map(c => c[1]).join(";"), ...L.map(c => cols.map(([k]) => cel(fmt(c, k))).join(";"))].join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], {type: "text/csv;charset=utf-8"}));
+  a.download = `auditoria_popular_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  if (DEMO) toast("Na prévia dentro do Claude o download é bloqueado; no painel publicado ele baixa o arquivo.");
+};
+$("imp").onclick = () => {
+  const L = base().filter(ehPendente).sort((a, b) => (b.dias_em_aberto ?? 0) - (a.dias_em_aberto ?? 0));
+  const de = $("fd1").value, ate = $("fd2").value;
+  $("impressao").innerHTML = `<h2>Farmanutri · Pendências Farmácia Popular</h2>
+    <div>${esc(gestor() ? "Todas as lojas" : sess.nome)} · ${L.length} pendência(s)${de || ate ? ` · período ${fd(de) || "início"} a ${fd(ate) || "hoje"}` : ""} · impresso em ${new Date().toLocaleString("pt-BR")}</div>
+    <div class="aviso">A partir do ${DIAS_ESTORNO}º dia de atraso a venda será estornada e descontada em vale.</div>
+    <table><thead><tr><th>Dias</th><th>Data</th><th>Cupom</th><th>Vendedor</th><th>Cliente</th><th>AUTMS</th><th>Telefone</th><th>Situação</th><th>Pendência</th></tr></thead>
+    <tbody>${L.map(c => `<tr><td>${c.dias_em_aberto ?? ""}</td><td>${fd(c.data)}</td><td>${esc(c.coo)}</td><td>${esc(c.vendedor)}</td><td>${esc(c.cliente)}</td>
+      <td>${esc(c.autms)}</td><td>${esc(tel(c.telefone))}</td><td>${esc(c.status)}${c.situacao === "REVISAO" ? " (revisão solicitada)" : ""}</td><td>${esc(pendencia(c))}</td></tr>`).join("")}</tbody></table>`;
+  try { window.print(); } catch (e) { toast("Não foi possível abrir a impressão aqui."); }
+};
+
+// ------------------------------------------------------------------ eventos
+["fd1", "fd2", "fc"].forEach(i => $(i).onchange = () => { mostrar = LIMITE; render(); });
+$("fq").oninput = () => { mostrar = LIMITE; render(); };
+$("dFechar").onclick = () => $("dlg").close();
+
+["demoTag1", "demoTag2"].forEach(i => { if (DEMO) $(i).innerHTML = '<span class="demo">DEMONSTRAÇÃO</span>'; });
+$("lDemo").hidden = !DEMO;
+sess = DEMO ? null : ler("popular_sessao");
+if (sess && sess.codigo != null) entrar(false); else { $("entrada").hidden = false; }
+setInterval(() => { if (sess && !document.hidden && !$("dlg").open) carregar(true); }, ATUALIZAR_MIN * 60000);
+</script>
+</body>
+</html>
