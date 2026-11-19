@@ -327,3 +327,8 @@ nav.abas a { font-size: 11.5px; }
 .pisca { animation: pisca 1.2s ease-in-out infinite; }
 @keyframes pisca { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .pisca { animation: none; } }
+.pop-linha-vend { text-decoration: none; color: var(--tinta); }
+.pop-linha-vend > span { display: flex; align-items: center; gap: 4px; color: var(--tinta); }
+.pop-linha-vend svg { color: var(--cinza); }
+.pop-filtro-vend { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--branco); border: 2px solid var(--azul); border-radius: 12px; padding: 8px 12px; font-size: 14px; }
+.pop-filtro-vend a { font-weight: 700; white-space: nowrap; min-height: 32px; display: flex; align-items: center; }

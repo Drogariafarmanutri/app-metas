@@ -1012,8 +1012,19 @@ function gestaoFinanceiro(g) {
 }
 
 function gestaoAlertas(g) {
-  const n = g.notas_pendentes, r = g.rupturas, p = g.perdas_devolucoes, b = g.balanco;
+  const n = g.notas_pendentes, r = g.rupturas, p = g.perdas_devolucoes, b = g.balanco, vp = g.vencendo_sem_preco;
   const blocos = [];
+  if (vp?.total) {
+    const mostrar = estado.verTodosVencPreco ? vp.itens : vp.itens.slice(0, 10);
+    const cor = (d) => (d != null && d <= 30 ? "dias-vermelho" : d != null && d <= 60 ? "dias-amarelo" : "dias-cinza");
+    blocos.push(`
+    <section class="cartao lista-prod venc-preco">
+      <h2>Vencendo sem preço alterado <span class="rotulo">(${vp.total} produto${vp.total > 1 ? "s" : ""}${vp.ate_30_dias ? ` · ${vp.ate_30_dias} vencem em até 30 dias` : ""})</span></h2>
+      <p class="nota" style="margin:0 0 4px">No Automatiza (Controle de produtos com vencimento), o <b>Preço (Vencendo)</b> destes itens está em branco ou igual ao preço normal. Baixe o preço para girar antes de vencer.${Object.keys(vp.por_loja || {}).length > 1 ? ` · ${Object.entries(vp.por_loja).map(([l, q]) => `${esc(l)}: ${q}`).join(" · ")}` : ""}</p>
+      ${mostrar.map((x) => `<div class="prod"><div class="prod-nome">${esc(x.nome)}<span class="nota">${x.loja ? esc(x.loja) + " · " : ""}vence ${dataBR(x.vencimento)} · ${num(x.qtd, 0)} un.${x.preco_normal ? ` · preço ${brl(x.preco_normal, 2)}` : ""}${x.preco_vencendo ? ` · vencendo ${brl(x.preco_vencendo, 2)}` : " · sem preço vencendo"}</span></div><span class="pill ${cor(x.dias)}">${x.dias} dia${x.dias === 1 ? "" : "s"}</span></div>`).join("")}
+      ${vp.itens.length > 10 ? `<button class="link" type="button" data-acao="todos-venc-preco">${estado.verTodosVencPreco ? "Mostrar menos" : `Ver todos os ${vp.itens.length}`}</button>` : ""}
+    </section>`);
+  }
   if (n) blocos.push(`
     <section class="cartao lista-prod">
       <h2>Notas pendentes <span class="rotulo">(${n.total} · ${brl(n.valor_total)})</span></h2>
@@ -1131,7 +1142,8 @@ function telaGestao() {
   if (!g) return moldura("gestao", "Gestão", "", `<section class="cartao"><p style="margin:0;font-weight:600">Os números de gestão aparecem depois da próxima sincronização (o sincronizador precisa estar atualizado e a tabela "gestao" criada no banco).</p></section>`);
   const abas = [["vendas", "Vendas"], ["estoque", "Estoque"], ["financeiro", "Caixa"], ["escala", "Escala"], ["alertas", "Alertas"]];
   const qtdAlertas = (g.notas_pendentes?.total || 0) + (g.rupturas?.maiores?.filter((x) => x.curva === "A").length || 0)
-    + (POP.carregado ? n0(POP.alertas?.revisao) + n0(POP.alertas?.vencidos) : 0);
+    + (POP.carregado ? n0(POP.alertas?.revisao) + n0(POP.alertas?.vencidos) : 0)
+    + (g.vencendo_sem_preco?.ate_30_dias || 0);
   if (estado.anterior) {
     return moldura("gestao", "Gestão", `Mês fechado · ${esc(g.mes || "")}`, `
       <p class="nota" style="margin:0 4px">No mês anterior aparecem as vendas, metas e lucratividade por loja. Estoque, caixa e alertas são sempre de hoje.</p>
@@ -1541,9 +1553,9 @@ function popBlocoGestor() {
     </section>` : ""}
     ${pend ? `
     <section class="cartao lista-prod">
-      <h2>Pendências por colaborador</h2>
-      ${linhas.map((x) => `<div class="prod"><div class="prod-nome">${esc(nomeCurto(x.vendedor) || "Cód. " + x.cod_vendedor)}<span class="nota">cód. ${esc(x.cod_vendedor)}${x.mais_antigo ? ` · mais antiga ${dataBR(x.mais_antigo)}` : ""}</span></div><span>${n0(x.vencidos) ? `<span class="pill dias-vermelho">${n0(x.vencidos)} no ${DIAS_ESTORNO}º</span> ` : ""}<strong>${n0(x.pendentes)}</strong></span></div>`).join("")}
-      ${semAtTotal ? `<div class="prod"><div class="prod-nome">Sem atendente identificado<span class="nota">usuário genérico · só o gestor vê</span></div><strong>${semAtTotal}</strong></div>` : ""}
+      <h2>Pendências por colaborador <span class="rotulo">· toque para ver</span></h2>
+      ${linhas.map((x) => `<a class="prod pop-linha-vend" href="#/popular?vendedor=${encodeURIComponent(x.cod_vendedor)}"><div class="prod-nome">${esc(nomeCurto(x.vendedor) || "Cód. " + x.cod_vendedor)}<span class="nota">cód. ${esc(x.cod_vendedor)}${x.mais_antigo ? ` · mais antiga ${dataBR(x.mais_antigo)}` : ""}</span></div><span>${n0(x.vencidos) ? `<span class="pill dias-vermelho">${n0(x.vencidos)} no ${DIAS_ESTORNO}º</span> ` : ""}<strong>${n0(x.pendentes)}</strong> ${I.seta}</span></a>`).join("")}
+      ${semAtTotal ? `<a class="prod pop-linha-vend" href="#/popular?vendedor=sem"><div class="prod-nome">Sem atendente identificado<span class="nota">usuário genérico · só o gestor vê</span></div><span><strong>${semAtTotal}</strong> ${I.seta}</span></a>` : ""}
       <p class="nota" style="margin:8px 0 0">Conferência: ${soma} nos colaboradores + ${semAtTotal} sem atendente = ${soma + semAtTotal}${dif ? ` · <b>diferença de ${dif} para o total (${pend})</b>` : ` = total de pendências ✓`}</p>
     </section>` : ""}`;
 }
@@ -1572,8 +1584,11 @@ function telaPopular() {
   const chave = rota.startsWith("popular/") ? decodeURIComponent(rota.slice(8)) : null;
   if (chave) return telaPopularDetalhe(chave);
   const filtroRota = (location.hash.split("?")[1] || "");
-  if (filtroRota && POP._filtroRota !== filtroRota) {
+  if (POP._filtroRota !== filtroRota) {
     POP._filtroRota = filtroRota;
+    const mv = filtroRota.match(/^vendedor=(\w+)$/);
+    POP.vend = mv ? (mv[1] === "sem" ? "sem" : Number(mv[1])) : null;   // pendências de um colaborador (Gestão › Alertas)
+    if (mv) { POP.kpi = "pend"; POP.busca = ""; POP.de = ""; POP.ate = ""; POP.mostrar = 60; }
     POP.kpi = { revisao: "rev", duplicados: "dup", generico: "gen" }[filtroRota] || POP.kpi;
   }
   if (!POP.carregado) {
@@ -1594,7 +1609,8 @@ function telaPopular() {
   };
   const q = semAcento(POP.busca.trim());
   const qd = soDigitos(POP.busca);
-  let L = base.filter(filtros[POP.kpi] || popPendente).filter((c) => {
+  const doVend = (c) => POP.vend == null || (POP.vend === "sem" ? c.cod_vendedor == null : c.cod_vendedor === POP.vend);
+  let L = base.filter(filtros[POP.kpi] || popPendente).filter(doVend).filter((c) => {
     if (POP.de && String(c.data) < POP.de) return false;
     if (POP.ate && String(c.data) > POP.ate) return false;
     if (!q) return true;
@@ -1624,6 +1640,7 @@ function telaPopular() {
       <button type="button" data-pop-kpi="rev" aria-pressed="${POP.kpi === "rev"}">Revisões (${n0(POP.alertas?.revisao)})</button>
       <button type="button" data-pop-kpi="gen" aria-pressed="${POP.kpi === "gen"}">Usuário genérico</button>
     </div>` : ""}
+    ${POP.vend != null ? `<div class="pop-filtro-vend"><span>Pendências de <b>${esc(POP.vend === "sem" ? "sem atendente identificado" : (nomeCurto(popLinhaEquipe(POP.vend).vendedor) || "cód. " + POP.vend))}</b>${POP.vend !== "sem" ? ` · ${n0(popLinhaEquipe(POP.vend).pendentes)} no total` : ""}</span><a href="#/popular" aria-label="Ver todos">Ver todos ✕</a></div>` : ""}
     <div class="pop-busca">
       <label class="pop-campo">${I.lupa}<input id="pop-q" type="search" value="${esc(POP.busca)}" placeholder="Nome, CPF, autorização ou cupom" aria-label="Pesquisar"></label>
       <button type="button" class="pop-cal ${POP.de || POP.ate ? "ativo" : ""}" data-acao="pop-datas" aria-label="Filtrar por data" aria-expanded="${POP.verDatas}">${I.calendario}</button>
@@ -1972,6 +1989,7 @@ app.addEventListener("click", async (e) => {
   const sug = e.target.closest("[data-pergunta]");
   if (sug) { enviarPergunta(sug.dataset.pergunta); return; }
   if (e.target.closest("[data-acao=limpar-chat]")) { estado.chat = []; render(); return; }
+  if (e.target.closest("[data-acao=todos-venc-preco]")) { estado.verTodosVencPreco = !estado.verTodosVencPreco; const y = window.scrollY; render(); window.scrollTo(0, y); return; }
   if (e.target.closest("[data-acao=todos-vencendo]")) {
     estado.verTodosVencendo = !estado.verTodosVencendo;
     const y = window.scrollY;
