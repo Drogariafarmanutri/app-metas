@@ -1040,8 +1040,13 @@ function gestaoAlertas(g) {
   if (p) blocos.push(`
     <section class="cartao lista-prod">
       <h2>Perdas e devoluções</h2>
-      ${p.por_mes.map((x) => `<div class="prod"><div class="prod-nome">${esc(x.mes)}<span class="nota">dev. cliente ${brl(x.devolucao_cliente || 0)} · dev. fornecedor ${brl(x.devolucao_fornecedor || 0)}</span></div><span><span class="rotulo">perdas</span> <strong>${brl(x.perdas || 0)}</strong></span></div>`).join("")}
-    </section>`);
+      <p class="nota" style="margin:0 0 4px">${p.maiores_baixas ? "Perda de mercadoria = só produto para revenda (fora dos grupos 19 e 20). O restante das baixas é consumo/patrimônio e aparece à parte." : "Valor das notas de perda (sem separar consumo e patrimônio)."}</p>
+      ${p.por_mes.map((x) => `<div class="prod"><div class="prod-nome">${esc(x.mes)}<span class="nota">dev. cliente ${brl(x.devolucao_cliente || 0)} · dev. fornecedor ${brl(x.devolucao_fornecedor || 0)}${x.uso_consumo ? ` · uso e consumo ${brl(x.uso_consumo)}` : ""}${x.baixa_consumo_patrimonio ? ` · baixa consumo/patrimônio ${brl(x.baixa_consumo_patrimonio)}` : ""}</span></div><span><span class="rotulo">perdas</span> <strong>${brl(x.perdas || 0)}</strong></span></div>`).join("")}
+    </section>
+    ${(p.maiores_baixas || []).length ? `<section class="cartao lista-prod">
+      <h2>Maiores baixas <span class="rotulo">(3 meses)</span></h2>
+      ${p.maiores_baixas.slice(0, 8).map((x) => `<div class="prod"><div class="prod-nome">${esc(x.produto || "Item " + x.codigo)}<span class="nota">${esc(x.loja)} · ${esc(x.mes)} · ${num(x.qtde, 0)} un. · ${x.classificacao === "perda_mercadoria" ? "perda de mercadoria" : "consumo/patrimônio, conferir"}</span></div><strong class="${x.classificacao === "perda_mercadoria" ? "cai" : ""}">${brl(x.valor)}</strong></div>`).join("")}
+    </section>` : ""}`);
   if (b?.por_loja?.length) blocos.push(`
     <section class="cartao lista-prod">
       <h2>Balanço · últimos ${b.periodo_dias} dias</h2>
