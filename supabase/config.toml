@@ -1,0 +1,6 @@
+# Projeto Supabase "farmanutri-metas". Esta pasta é lida pela integração GitHub do Supabase.
+project_id = "pfhkysaprroqgfbzrgsr"
+
+# Proxy do Monitor BotVendas: a proteção real é o login do botvendas (token Bearer), não o JWT do Supabase.
+[functions.bv-proxy]
+verify_jwt = false
