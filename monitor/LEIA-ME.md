@@ -17,7 +17,11 @@ App de celular (PWA) que acompanha a fila de atendimento do BotVendas, com alarm
 ## Instalar no celular
 Abra `.../app-metas/monitor/` no Chrome/Safari > menu > Adicionar à tela inicial. Em Ajustes, toque em "Testar alarme".
 
+## Como o tempo de espera é calculado
+É o tempo desde a última atualização do atendimento em "Aguardando vendedor" (`updated_at`, que o BotVendas envia em horário de Brasília). O campo `te_in_seconds` não é usado porque fica parado. Uma única chamada por leitura (intervalo mínimo de 30 s), porque o BotVendas limita requisições por minuto (erro 429).
+
 ## Limites
+- Se o BotVendas atualizar `updated_at` durante a espera (por exemplo, nova mensagem do cliente), o contador pode recomeçar.
 - O alarme toca com o app aberto e a tela ligada. Com o celular bloqueado o navegador não toca som.
 - A senha do usuário de API fica salva só neste aparelho, para reconectar quando o acesso expirar.
 
