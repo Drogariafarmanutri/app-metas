@@ -210,6 +210,95 @@
     pollTimer = setInterval(poll, Math.max(30, cfg.everySec) * 1000);
   }
 
+  // ---------- Atendendo (clientes em atendimento agora) ----------
+  // 1 chamada lista quem está em atendimento (status 3). O vendedor vem do setor onde o cliente está:
+  // só varre setores para clientes ainda sem vendedor conhecido (cache), com parada antecipada, no máx. 1x por minuto.
+  let sectorsCache = { at: 0, list: [] };
+  const sellerOf = new Map(); // id do atendimento -> nome do setor/vendedor
+  let activeTimer = null, activeBusy = false;
+  async function getSectors() {
+    if (Date.now() - sectorsCache.at < 15 * 60 * 1000 && sectorsCache.list.length) return sectorsCache.list;
+    const list = await api('/api/v2/attendance-dashboard/sectors');
+    sectorsCache = { at: Date.now(), list: Array.isArray(list) ? list : [] };
+    return sectorsCache.list;
+  }
+  function fmtAgo(sec) {
+    sec = Math.max(0, Math.round(sec));
+    if (sec < 60) return 'agora';
+    const m = Math.floor(sec / 60);
+    if (m < 60) return m + ' min';
+    const h = Math.floor(m / 60);
+    return h >= 24 ? Math.floor(h / 24) + 'd ' + (h % 24) + 'h' : h + 'h ' + String(m % 60).padStart(2, '0') + 'min';
+  }
+  async function fetchActive() {
+    const now = Date.now(), ini = new Date(now - 3 * 86400000);
+    const rows = []; let page = 1, last = 1, calls = 0;
+    do {
+      calls++;
+      const j = await api(`/api/v2/attendance/paginated?statuses[]=3&ini_updated_at=${ymd(ini)}&end_updated_at=${ymd(new Date(now))}&page_size=100&page=${page}`);
+      last = j.last_page || 1;
+      for (const o of j.data || []) {
+        if (o.status != null && o.status !== 3) continue;
+        const t = parseBR(o.updated_at);
+        rows.push({ id: o.id, name: (o.client_name || '').trim() || 'Cliente', idleSec: isNaN(t) ? 0 : Math.max(0, Math.round((now - t) / 1000)), phone: o.identification || '' });
+      }
+      page++;
+    } while (page <= last && page <= 3);
+    const ids = new Set(rows.map((r) => r.id));
+    for (const k of [...sellerOf.keys()]) if (!ids.has(k)) sellerOf.delete(k);
+    const missing = () => rows.filter((r) => !sellerOf.has(r.id));
+    if (missing().length) {
+      const sectors = await getSectors();
+      for (const sec of sectors) {
+        if (!missing().length || calls > 30) break;
+        calls++;
+        let pg = 1, lp = 1;
+        do {
+          const j = await api(`/api/v2/attendance-dashboard/orders-by-sector-status?status=3&sector=${sec.id}&page=${pg}`);
+          lp = j.last_page || 1;
+          for (const o of j.data || []) if (ids.has(o.id)) sellerOf.set(o.id, sec.name);
+          pg++;
+        } while (pg <= lp && pg <= 3);
+      }
+    }
+    rows.forEach((r) => { r.seller = sellerOf.get(r.id) || 'Não identificado'; });
+    return { rows, calls };
+  }
+  async function renderActive() {
+    if (activeBusy) return;
+    activeBusy = true;
+    try {
+      const { rows } = await fetchActive();
+      const groups = new Map();
+      rows.forEach((r) => { if (!groups.has(r.seller)) groups.set(r.seller, []); groups.get(r.seller).push(r); });
+      const names = [...groups.keys()].sort((a, b) => groups.get(b).length - groups.get(a).length || a.localeCompare(b));
+      $('aCount').textContent = rows.length;
+      $('aSellers').textContent = groups.size;
+      $('aMax').textContent = rows.length ? fmtAgo(Math.max(...rows.map((r) => r.idleSec))) : '–';
+      $('aInfo').textContent = 'Inatividade = tempo desde a última atualização do atendimento. Atualiza a cada minuto. ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const box = $('activeList'); box.textContent = '';
+      if (!rows.length) box.appendChild(el('p', 'muted', 'Nenhum cliente em atendimento agora.'));
+      names.forEach((nm) => {
+        const g = groups.get(nm).sort((a, b) => b.idleSec - a.idleSec);
+        const h = el('div', 'grp'); h.appendChild(el('div', '', nm)); h.appendChild(el('span', '', g.length + (g.length === 1 ? ' cliente' : ' clientes')));
+        box.appendChild(h);
+        g.forEach((r) => {
+          const c = el('div', 'card q'), l = el('div'); l.style.minWidth = 0;
+          l.appendChild(el('div', 'nm', r.name));
+          l.appendChild(el('div', 'st', r.phone ? 'tel. ' + r.phone : ''));
+          const w = el('div', 'w' + (r.idleSec > 3600 ? ' crit' : r.idleSec > 1200 ? ' att' : ''), fmtAgo(r.idleSec));
+          c.appendChild(l); c.appendChild(w); box.appendChild(c);
+        });
+      });
+    } catch (e) {
+      if (e.auth) { showLogin('Sessão expirada. Entre novamente.'); }
+      else { const b = $('activeList'); if (!b.querySelector('.card')) { b.textContent = ''; } $('aInfo').textContent = 'Falha ao atualizar: ' + e.message; }
+    }
+    activeBusy = false;
+  }
+  function startActive() { renderActive(); clearInterval(activeTimer); activeTimer = setInterval(renderActive, 60000); }
+  function stopActive() { clearInterval(activeTimer); activeTimer = null; }
+
   // ---------- Vendedores ----------
   function moneyBR(n) { return 'R$ ' + (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   async function renderSellers() {
@@ -242,7 +331,8 @@
 
   // ---------- Navegação ----------
   function showTab(t) {
-    ['queue', 'sellers', 'settings'].forEach((x) => $('tab-' + x).classList.toggle('hidden', x !== t));
+    ['queue', 'active', 'sellers', 'settings'].forEach((x) => $('tab-' + x).classList.toggle('hidden', x !== t));
+    if (t === 'active') startActive(); else stopActive();
     document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === t));
     if (t === 'sellers') renderSellers();
     if (t === 'settings') refreshNotifState();
@@ -254,6 +344,7 @@
     nb.classList.toggle('hidden', Notification.permission !== 'default');
   }
   function showLogin(msg) {
+    stopActive();
     stopAlarm(); clearInterval(pollTimer);
     $('appView').classList.add('hidden'); $('loginView').classList.remove('hidden');
     $('loginErr').textContent = msg || '';
