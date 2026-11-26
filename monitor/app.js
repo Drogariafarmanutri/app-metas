@@ -7,10 +7,9 @@
     del(k) { try { localStorage.removeItem(k); } catch (e) {} },
   };
 
-  const DEFAULT_CFG = { maxQueue: 3, maxWaitMin: 10, everySec: 30 };
+  const DEFAULT_CFG = { maxQueue: 3, maxWaitMin: 10, everySec: 45 };
   let cfg = Object.assign({}, DEFAULT_CFG, LS.get('cfg', {}));
   let token = LS.get('token', null);
-  let sectorsCache = { at: 0, list: [] };
   let lastOkAt = 0;
   let lastEval = null;
   let snooze = { until: 0, signature: '' };
@@ -53,42 +52,42 @@
       if (c) { await login(c.email, c.password); r = await rawFetch(path); }
     }
     if (r.status === 401) throw Object.assign(new Error('Sessão expirada'), { auth: true });
+    if (r.status === 429) {
+      let secs = 20;
+      try { const m = JSON.stringify(await r.json()).match(/em (\d+) segundos/); if (m) secs = Math.min(120, +m[1] + 2); } catch (e) {}
+      throw Object.assign(new Error('Limite de requisições do botvendas, nova tentativa em ' + secs + 's'), { rate: secs });
+    }
     if (!r.ok) throw new Error('HTTP ' + r.status + ' em ' + path.split('?')[0]);
     return r.json();
   }
 
   // ---------- Dados ----------
-  async function getSectors() {
-    if (Date.now() - sectorsCache.at < 10 * 60 * 1000 && sectorsCache.list.length) return sectorsCache.list;
-    const list = await api('/api/v2/attendance-dashboard/sectors');
-    sectorsCache = { at: Date.now(), list: Array.isArray(list) ? list : [] };
-    return sectorsCache.list;
+  // UMA chamada por leitura (o botvendas limita requisições por minuto).
+  // Tempo de espera = agora - updated_at do atendimento em "Aguardando vendedor" (status 2).
+  // Obs.: o botvendas envia updated_at em horário de Brasília (UTC-3) escrito com "Z"; por isso o ajuste abaixo.
+  // O campo te_in_seconds NÃO serve: fica parado (ex.: cliente há 2 h na fila marcava 17 s).
+  function parseBR(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/.exec(iso || '');
+    if (!m) return NaN;
+    return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) + 3 * 3600 * 1000;
   }
-  async function pool(items, n, fn) {
-    const out = []; let i = 0;
-    await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
-      while (i < items.length) { const k = i++; out[k] = await fn(items[k]); }
-    }));
-    return out;
-  }
+  function ymd(d) { const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
   async function fetchWaiting() {
-    const sectors = await getSectors();
-    const per = await pool(sectors, 5, async (s) => {
-      const items = []; let page = 1, last = 1;
-      do {
-        const j = await api(`/api/v2/attendance-dashboard/orders-by-sector-status?status=2&sector=${s.id}&page=${page}`);
-        last = j.last_page || 1;
-        for (const o of j.data || []) {
-          items.push({ id: o.id, name: o.client_name || 'Cliente', waitSec: o.te_in_seconds != null ? o.te_in_seconds : o.ta_in_seconds, sector: s.name });
-        }
-        page++;
-      } while (page <= last && page <= 5);
-      return items;
-    });
-    const seen = new Set(), out = [];
-    for (const it of per.flat()) if (!seen.has(it.id)) { seen.add(it.id); out.push(it); }
-    out.sort((a, b) => b.waitSec - a.waitSec);
-    return { items: out, sectors: sectors.length };
+    const now = Date.now(), ini = new Date(now - 3 * 86400000);
+    const items = []; let page = 1, last = 1, calls = 0;
+    do {
+      calls++;
+      const j = await api(`/api/v2/attendance/paginated?statuses[]=2&ini_updated_at=${ymd(ini)}&end_updated_at=${ymd(new Date(now))}&page_size=100&page=${page}`);
+      last = j.last_page || 1;
+      for (const o of j.data || []) {
+        if (o.status != null && o.status !== 2) continue;
+        const t = parseBR(o.updated_at);
+        items.push({ id: o.id, name: o.client_name || 'Cliente', waitSec: isNaN(t) ? 0 : Math.max(0, Math.round((now - t) / 1000)), sector: o.previous_seller_name ? 'Antes: ' + o.previous_seller_name : '', since: isNaN(t) ? null : t });
+      }
+      page++;
+    } while (page <= last && page <= 3);
+    items.sort((a, b) => b.waitSec - a.waitSec);
+    return { items, calls };
   }
   function isoDate(d) { const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
   function range(p) {
@@ -158,7 +157,8 @@
     ev.reasons.forEach((r) => ul.appendChild(el('li', '', r.text)));
     $('sCount').textContent = ev.count;
     $('sMax').textContent = ev.count ? Alerts.fmt(ev.maxWait) : '–';
-    $('sSectors').textContent = meta.sectors;
+    const old = meta.items.length ? meta.items[0].since : null;
+    $('sSectors').textContent = old ? new Date(old).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }) : '–';
     const list = $('queueList'); list.textContent = '';
     if (!ev.count) list.appendChild(el('p', 'muted', 'Nenhum cliente aguardando vendedor agora.'));
     meta.items.forEach((it) => {
@@ -193,6 +193,7 @@
       handleAlarm(ev);
     } catch (e) {
       if (e.auth) { showLogin('Sessão expirada. Entre novamente.'); return; }
+      if (e.rate) { clearInterval(pollTimer); setTimeout(() => { poll(); schedule(); }, e.rate * 1000); }
       // sem dados: se passar de 2 min sem sucesso, trata como crítico
       $('updated').textContent = 'sem conexão';
       if (Date.now() - lastOkAt > 120000) {
@@ -205,7 +206,7 @@
   }
   function schedule() {
     clearInterval(pollTimer);
-    pollTimer = setInterval(poll, Math.max(10, cfg.everySec) * 1000);
+    pollTimer = setInterval(poll, Math.max(30, cfg.everySec) * 1000);
   }
 
   // ---------- Vendedores ----------
@@ -291,7 +292,7 @@
   $('testSound').addEventListener('click', () => { ensureAudio(); setTimeout(() => { let n = 0; const t = setInterval(() => { beep(n++ % 2 ? 660 : 990, 0.3, 0.4); if (n > 5) clearInterval(t); }, 350); if (navigator.vibrate) navigator.vibrate([250, 120, 250]); }, 100); });
   $('saveCfg').addEventListener('click', () => {
     const q = parseInt($('cfgQueue').value, 10), w = parseFloat($('cfgWait').value), s = parseInt($('cfgEvery').value, 10);
-    cfg = { maxQueue: q > 0 ? q : DEFAULT_CFG.maxQueue, maxWaitMin: w > 0 ? w : DEFAULT_CFG.maxWaitMin, everySec: s >= 10 ? s : DEFAULT_CFG.everySec };
+    cfg = { maxQueue: q > 0 ? q : DEFAULT_CFG.maxQueue, maxWaitMin: w > 0 ? w : DEFAULT_CFG.maxWaitMin, everySec: s >= 30 ? s : DEFAULT_CFG.everySec };
     LS.set('cfg', cfg); schedule(); poll(); showTab('queue');
   });
   $('notifBtn').addEventListener('click', async () => { try { await Notification.requestPermission(); } catch (e) {} refreshNotifState(); });

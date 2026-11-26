@@ -88,7 +88,7 @@ nav button.on{color:#fff;font-weight:700;box-shadow:inset 0 3px var(--blue)}
       <div class="stats">
         <div class="stat"><b id="sCount">–</b><span>sem atendimento</span></div>
         <div class="stat"><b id="sMax">–</b><span>maior espera</span></div>
-        <div class="stat"><b id="sSectors">–</b><span>setores lidos</span></div>
+        <div class="stat"><b id="sSectors">–</b><span>mais antigo desde</span></div>
       </div>
       <div id="queueList"></div>
     </section>
@@ -106,7 +106,7 @@ nav button.on{color:#fff;font-weight:700;box-shadow:inset 0 3px var(--blue)}
       <label>Alertar quando um cliente esperar MAIS de … minutos</label>
       <input id="cfgWait" type="number" min="1" max="240" inputmode="numeric">
       <label>Atualizar a cada … segundos</label>
-      <input id="cfgEvery" type="number" min="10" max="300" inputmode="numeric">
+      <input id="cfgEvery" type="number" min="30" max="300" inputmode="numeric">
       <div class="row" style="margin-top:14px">
         <button id="saveCfg" class="primary">Salvar</button>
         <button id="testSound">🔊 Testar alarme</button>
