@@ -90,9 +90,10 @@
     return { items, calls };
   }
   function isoDate(d) { const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
+  // O botvendas trata a data final como EXCLUSIVA (hoje->hoje devolve vazio): a data final é sempre amanhã.
   function range(p) {
-    const now = new Date(), end = isoDate(now);
-    if (p === 'today') return [end, end];
+    const now = new Date(), end = isoDate(new Date(now.getTime() + 86400000));
+    if (p === 'today') return [isoDate(now), end];
     if (p === '7d') { const s = new Date(now); s.setDate(s.getDate() - 6); return [isoDate(s), end]; }
     return [isoDate(new Date(now.getFullYear(), now.getMonth(), 1)), end];
   }
