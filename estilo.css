@@ -310,11 +310,13 @@ nav.abas a { font-size: 11.5px; }
 .pop-kpi strong { font-size: 14px; }
 .pop-kpi .nota { line-height: 15px; }
 .pop-rev { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--borda); padding-top: 10px; }
-.pop-fundo { position: fixed; inset: 0; background: rgba(20, 20, 20, .55); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 50; }
-.pop-dialogo { background: var(--branco); border-radius: 20px; width: 100%; max-width: 440px; padding: 22px 20px 18px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 18px 40px rgba(0, 0, 0, .3); }
+.pop-fundo { position: fixed; inset: 0; background: rgba(20, 20, 20, .55); display: flex; align-items: center; justify-content: center; padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); z-index: 50; }
+.pop-dialogo { background: var(--branco); border-radius: 20px; width: 100%; max-width: 440px; max-height: min(80vh, 560px); max-height: min(80dvh, 560px); overflow-y: auto; overscroll-behavior: contain; padding: 18px 18px 0; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 18px 40px rgba(0, 0, 0, .3); }
+.pop-dialogo > .pop-botoes { position: sticky; bottom: 0; background: var(--branco); padding: 8px 0 14px; margin-top: auto; }
+.pop-tab-rolagem { max-height: 30vh; overflow-y: auto; border-radius: 12px; flex: none; }
 .pop-sobre { font-size: 13px; font-weight: 700; color: var(--azul-escuro); letter-spacing: .4px; }
 .pop-num { display: flex; align-items: baseline; gap: 10px; }
-.pop-num span { font-size: 64px; font-weight: 800; line-height: .9; color: var(--erro); }
+.pop-num span { font-size: 48px; font-weight: 800; line-height: .9; color: var(--erro); }
 .pop-num strong { font-size: 17px; line-height: 20px; }
 .pop-tab { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--gelo); border-radius: 12px; overflow: hidden; }
 .pop-tab th { text-align: left; padding: 6px 10px; font-size: 12px; color: var(--cinza); }
@@ -332,3 +334,11 @@ nav.abas a { font-size: 11.5px; }
 .pop-linha-vend svg { color: var(--cinza); }
 .pop-filtro-vend { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--branco); border: 2px solid var(--azul); border-radius: 12px; padding: 8px 12px; font-size: 14px; }
 .pop-filtro-vend a { font-weight: 700; white-space: nowrap; min-height: 32px; display: flex; align-items: center; }
+.pop-sel { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 700; color: var(--cinza); }
+.pop-sel select { min-height: 44px; border: 1px solid var(--borda); border-radius: 12px; padding: 0 10px; font-size: 15px; background: var(--branco); color: var(--tinta); font-family: inherit; }
+.pop-ordem { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 4px; }
+.pop-ordem .pop-chips button { min-height: 32px; padding: 2px 12px; }
+.pop-caixa.gestor { background: #dcecfb; }
+.pop-ret-lista { display: flex; flex-direction: column; gap: 8px; }
+.pop-ret { display: flex; flex-direction: column; gap: 3px; background: var(--gelo); border-radius: 12px; padding: 10px 12px; text-decoration: none; color: var(--tinta); }
+.pop-ret-txt { font-size: 14px; line-height: 19px; font-weight: 600; }
