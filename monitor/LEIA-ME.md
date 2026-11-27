@@ -20,6 +20,9 @@ Abra `.../app-metas/monitor/` no Chrome/Safari > menu > Adicionar à tela inicia
 ## Aba Atendendo
 Lista os clientes em atendimento (status 3), agrupados por vendedor, com o tempo desde a última atualização do atendimento ("inatividade"). O vendedor vem do setor onde o cliente está; fica em cache para poupar chamadas (BotVendas limita por minuto). Atualiza a cada 60 s enquanto a aba está aberta.
 
+## Ver a conversa
+Tocar num cliente (na Fila ou em Atendendo) abre `https://farmanutri.botvendas.com/orders/<id>`, a página "Visualizar atendimento" do painel, com o chat ao vivo. A API oficial só devolve conversas de atendimentos FECHADOS, por isso o app abre o painel. É preciso estar logado no painel do BotVendas no navegador do celular (a sessão expira por inatividade). Nessa página há botões que alteram o atendimento (Transferir, Cancelar pedido): cuidado ao tocar.
+
 ## Como o tempo de espera é calculado
 É o tempo desde a última atualização do atendimento em "Aguardando vendedor" (`updated_at`, que o BotVendas envia em horário de Brasília). O campo `te_in_seconds` não é usado porque fica parado. Uma única chamada por leitura (intervalo mínimo de 30 s), porque o BotVendas limita requisições por minuto (erro 429).
 
