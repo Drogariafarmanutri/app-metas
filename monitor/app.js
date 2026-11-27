@@ -21,6 +21,14 @@
   // Sem config.js: chama o mesmo endereço do app (servidor Node.js do projeto).
   const CONF = window.MONITOR_CONFIG || {};
   const BASE = (CONF.API_BASE || '').replace(/\/$/, '');
+  // Painel web do BotVendas: ao tocar num cliente, abre a conversa dele (página "Visualizar atendimento").
+  const PANEL = (CONF.PANEL_URL || 'https://farmanutri.botvendas.com').replace(/\/$/, '');
+  function chatLink(id, cls) {
+    const a = document.createElement('a');
+    a.className = cls; a.href = PANEL + '/orders/' + encodeURIComponent(id);
+    a.target = '_blank'; a.rel = 'noopener'; a.title = 'Abrir conversa no BotVendas';
+    return a;
+  }
   async function rawFetch(path, opts) {
     const headers = { Accept: 'application/json' };
     if (opts && opts.body) headers['Content-Type'] = 'application/json';
@@ -163,10 +171,10 @@
     const list = $('queueList'); list.textContent = '';
     if (!ev.count) list.appendChild(el('p', 'muted', 'Nenhum cliente aguardando vendedor agora.'));
     meta.items.forEach((it) => {
-      const c = el('div', 'card q'), l = el('div');
+      const c = chatLink(it.id, 'card q lnk'), l = el('div');
       l.style.minWidth = 0;
       l.appendChild(el('div', 'nm', it.name));
-      l.appendChild(el('div', 'st', it.sector || ''));
+      l.appendChild(el('div', 'st', (it.sector ? it.sector + ' · ' : '') + 'Ver conversa ›'));
       const w = el('div', 'w' + (it.waitSec > cfg.maxWaitMin * 60 ? ' crit' : it.waitSec > cfg.maxWaitMin * 30 ? ' att' : ''), Alerts.fmt(it.waitSec));
       c.appendChild(l); c.appendChild(w); list.appendChild(c);
     });
@@ -283,9 +291,9 @@
         const h = el('div', 'grp'); h.appendChild(el('div', '', nm)); h.appendChild(el('span', '', g.length + (g.length === 1 ? ' cliente' : ' clientes')));
         box.appendChild(h);
         g.forEach((r) => {
-          const c = el('div', 'card q'), l = el('div'); l.style.minWidth = 0;
+          const c = chatLink(r.id, 'card q lnk'), l = el('div'); l.style.minWidth = 0;
           l.appendChild(el('div', 'nm', r.name));
-          l.appendChild(el('div', 'st', r.phone ? 'tel. ' + r.phone : ''));
+          l.appendChild(el('div', 'st', (r.phone ? 'tel. ' + r.phone + ' · ' : '') + 'Ver conversa ›'));
           const w = el('div', 'w' + (r.idleSec > 3600 ? ' crit' : r.idleSec > 1200 ? ' att' : ''), fmtAgo(r.idleSec));
           c.appendChild(l); c.appendChild(w); box.appendChild(c);
         });
